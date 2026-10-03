@@ -496,6 +496,7 @@ Con `arc-helm-repo`, `arc-controller`, `terraform-rbac` y `arc-runners` descomen
 | `arc-controller` | Controller de ARC (`arc-systems`) |
 | `terraform-rbac` | ServiceAccount `tofu-runner`, con acceso solo a Secrets/Leases del namespace `terraform` |
 | `arc-runners` | El único scale set (hasta 3 runners), para CI, deploys y OpenTofu |
+| `arc-runners` (caché) | Volumen compartido `arc-cache` montado en `/cache` de los runners ([Caché de los runners](../operacion/cache-arc.md)) |
 
 ```bash
 kubectl get applications -n argocd | grep -E 'arc|terraform'

@@ -106,6 +106,9 @@ nav:
       - Agregar un disco a un nodo: operacion/agregar-disco.md
       - Backups y snapshots de Incus: operacion/backups-incus.md
       - Actualizar K3s: operacion/actualizar-k3s.md
+      - Actualizar ArgoCD: operacion/actualizar-argocd.md
+      - Cambiar el controlador de Gateway: operacion/cambiar-gateway.md
+      - Caché de los runners (ARC): operacion/cache-arc.md
       - Rotar credenciales: operacion/rotar-credenciales.md
       - Pipeline de gitops: operacion/pipeline-gitops.md
   - Arquitectura:

@@ -64,6 +64,7 @@ vez que aparecen en cada página llevan el significado entre paréntesis.
 | **PSS** | [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) | Niveles de seguridad de Kubernetes para pods (privileged, baseline, restricted). |
 | **PVC** / PVCs | [PersistentVolumeClaim](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) | Pedido de almacenamiento persistente de un pod en Kubernetes. |
 | **RAM** | memoria RAM | Memoria de trabajo del equipo. |
+| **RWX** | ReadWriteMany | Modo de acceso de un volumen que varios pods pueden montar a la vez, incluso en nodos distintos. |
 | **SANs** | Subject Alternative Names | Nombres e IPs extra que acepta un certificado TLS. |
 | **SBC** | Single Board Computer | Computador en una sola placa, como el Orange Pi 5 Plus. |
 | **SDK** | Software Development Kit | Librería para usar un servicio desde código (p. ej. el SDK de 1Password). |

@@ -17,6 +17,7 @@ pasos en orden, cómo verificar y qué revisar si algo falla.
 | [Actualizar K3s](actualizar-k3s.md) | Revisar las actualizaciones automáticas o fijar una versión | GitOps + Ansible |
 | [Actualizar ArgoCD](actualizar-argocd.md) | Se actualiza solo a la última versión; primera actualización, fijar una versión, qué hacer si falla | GitOps + Ansible |
 | [Cambiar el controlador de Gateway](cambiar-gateway.md) | Cambiar entre Kong, Traefik y NGINX; TLS de `*.homelab.local` | GitOps + `kubectl` |
+| [Caché de los runners (ARC)](cache-arc.md) | Qué se cachea entre jobs, cómo verificarla, limpiarla o vaciarla | `kubectl` + GitOps |
 | [Rotar credenciales](rotar-credenciales.md) | Periódicamente, o si una credencial se filtró | 1Password + playbooks |
 | [Pipeline de gitops](pipeline-gitops.md) | Qué valida cada PR de `gitops`; activar el diff de ArgoCD (una vez) | GitHub Actions + 1Password |
 

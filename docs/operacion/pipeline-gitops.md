@@ -6,7 +6,9 @@ reutilizable
 [`gitops.yml`](https://github.com/symintel/core-pipelines/blob/main/.github/workflows/gitops.yml)
 de `core-pipelines`, llamado desde `gitops/.github/workflows/validate.yml`.
 Corre en el runner `arc-runners` del HomeLab (todos los workflows de
-`core-pipelines` corren en ARC).
+`core-pipelines` corren en ARC). Las herramientas que instala (helm, kustomize,
+kubeconform, gitleaks, argocd) se guardan en la [caché de los runners](cache-arc.md),
+verificadas por `sha256`.
 
 ## Qué valida
 
