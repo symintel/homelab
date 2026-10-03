@@ -1,0 +1,15 @@
+---
+incus_role: "Miembro (grupo arm64-nodes)"
+incus_cluster_role: member
+incus_cluster_groups: [arm64-nodes, default]
+k3s_role: server
+ip_static: true
+k3s_node_labels:
+  workload-tier: heavy
+  kubernetes.io/arch: arm64
+  node.longhorn.io/create-default-disk: "true"
+ansible_python_interpreter: /usr/bin/python3
+has_wifi: true
+wifi_iface: wlP2p33s0
+
+host_hardening_regenerate_ssh_host_keys: true

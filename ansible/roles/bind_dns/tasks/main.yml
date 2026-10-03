@@ -1,0 +1,191 @@
+---
+- name: Instalar BIND y dig
+  ansible.builtin.apt:
+    name:
+      - bind9
+      - bind9-dnsutils
+    state: present
+    update_cache: true
+  register: bind_dns_pkg
+
+# --- chroot en /var/lib/named ----------------------------------------------
+- name: Verificar si /etc/bind ya es un symlink al chroot
+  ansible.builtin.stat:
+    path: /etc/bind
+  register: bind_dns_etc_bind
+
+- name: Detener named antes de mover la configuracion al chroot
+  ansible.builtin.systemd:
+    name: named
+    state: stopped
+  when:
+    - not bind_dns_etc_bind.stat.islnk | default(false)
+    - not (ansible_check_mode and bind_dns_pkg is changed)
+
+- name: Crear los directorios reales que se montan dentro del chroot
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: bind
+    group: bind
+    mode: "0775"
+  loop:
+    - /var/cache/bind
+    - /var/lib/bind
+    - /run/named
+
+- name: Crear los directorios del chroot
+  ansible.builtin.file:
+    path: "{{ bind_dns_chroot_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: bind
+    mode: "0750"
+  loop: "{{ bind_dns_chroot_dirs }}"
+
+- name: Symlink var/run -> ../run dentro del chroot
+  ansible.builtin.file:
+    src: ../run
+    dest: "{{ bind_dns_chroot_dir }}/var/run"
+    state: link
+    force: true
+
+- name: Crear los puntos de montaje (directorios)  # noqa: risky-file-permissions
+  ansible.builtin.file:
+    path: "{{ bind_dns_chroot_dir }}/{{ item.path }}"
+    state: directory
+  loop: "{{ bind_dns_chroot_mounts | selectattr('kind', 'equalto', 'dir') | list }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Crear los puntos de montaje (archivos)  # noqa: risky-file-permissions
+  ansible.builtin.copy:
+    dest: "{{ bind_dns_chroot_dir }}/{{ item.path }}"
+    content: ""
+    force: false
+  loop: "{{ bind_dns_chroot_mounts | selectattr('kind', 'equalto', 'file') | list }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Montar (bind) los recursos dentro del chroot
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ bind_dns_chroot_dir }}/{{ item.path }}"
+    fstype: none
+    opts: bind,nofail
+    state: mounted
+  loop: "{{ bind_dns_chroot_mounts }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Recargar systemd tras editar /etc/fstab
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Crear el directorio etc/bind del chroot
+  ansible.builtin.file:
+    path: "{{ bind_dns_chroot_dir }}/etc/bind"
+    state: directory
+    owner: root
+    group: bind
+    mode: "2755"
+  when: not bind_dns_etc_bind.stat.islnk | default(false)
+
+- name: Copiar /etc/bind al chroot
+  ansible.builtin.command: "cp -a /etc/bind/. {{ bind_dns_chroot_dir }}/etc/bind/"
+  args:
+    creates: "{{ bind_dns_chroot_dir }}/etc/bind/named.conf"
+  when: not bind_dns_etc_bind.stat.islnk | default(false)
+
+- name: Quitar el /etc/bind original
+  ansible.builtin.file:
+    path: /etc/bind
+    state: absent
+  when: not bind_dns_etc_bind.stat.islnk | default(false)
+
+- name: /etc/bind como symlink al chroot
+  ansible.builtin.file:
+    src: ../var/lib/named/etc/bind
+    dest: /etc/bind
+    state: link
+    force: true
+
+- name: Configurar named con -t (chroot)
+  ansible.builtin.lineinfile:
+    path: /etc/default/named
+    regexp: '^OPTIONS='
+    line: 'OPTIONS="-u bind -t {{ bind_dns_chroot_dir }}"'
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reiniciar named
+
+- name: AppArmor, permitir el chroot
+  ansible.builtin.blockinfile:
+    path: /etc/apparmor.d/local/usr.sbin.named
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    block: |
+      {{ bind_dns_chroot_dir }}/etc/bind/** r,
+      {{ bind_dns_chroot_dir }}/usr/share/dns/root.* r,
+      {{ bind_dns_chroot_dir }}/{,var/}run/named/named.pid w,
+      {{ bind_dns_chroot_dir }}/{,var/}run/named/session.key w,
+  when: ansible_facts['apparmor']['status'] == 'enabled'
+  notify: Recargar AppArmor
+
+# --- configuracion ------------------------------------------------------------
+- name: Configurar named.conf.options
+  ansible.builtin.template:
+    src: named.conf.options.j2
+    dest: /etc/bind/named.conf.options
+    owner: root
+    group: bind
+    mode: "0644"
+    validate: /usr/bin/named-checkconf %s
+  notify: Reiniciar named
+
+- name: Declarar las zonas en named.conf.local
+  ansible.builtin.template:
+    src: named.conf.local.j2
+    dest: /etc/bind/named.conf.local
+    owner: root
+    group: bind
+    mode: "0644"
+  notify: Reiniciar named
+
+- name: Templar zona forward mco.local
+  ansible.builtin.template:
+    src: db.mco.local.j2
+    dest: /var/lib/bind/db.mco.local
+    owner: root
+    group: bind
+    mode: "0644"
+  notify: Recargar zonas BIND
+
+- name: Templar zona reversa 20.168.192.in-addr.arpa
+  ansible.builtin.template:
+    src: db.mco.local.inv.j2
+    dest: /var/lib/bind/db.mco.local.inv
+    owner: root
+    group: bind
+    mode: "0644"
+  notify: Recargar zonas BIND
+
+- name: Templar zona forward homelab.local
+  ansible.builtin.template:
+    src: db.homelab.local.j2
+    dest: /var/lib/bind/db.homelab.local
+    owner: root
+    group: bind
+    mode: "0644"
+  notify: Recargar zonas BIND
+
+- name: Habilitar named
+  ansible.builtin.systemd:
+    name: named
+    enabled: true
+    state: started
+  when: not (ansible_check_mode and bind_dns_pkg is changed)

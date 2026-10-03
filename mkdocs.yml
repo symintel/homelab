@@ -1,0 +1,138 @@
+site_name: HomeLab — K3s + Incus + CAPN
+site_description: Documentación de un HomeLab híbrido x86_64 + ARM64 (Incus, K3s, CAPN, ArgoCD)
+site_url: https://symintel.github.io/homelab/
+repo_url: https://github.com/symintel/homelab
+repo_name: symintel/homelab
+edit_uri: edit/main/docs/
+docs_dir: docs
+
+theme:
+  name: material
+  language: es
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Modo claro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.path
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - content.tooltips
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  # Siglas: tooltip automático en todas las páginas (includes/abbreviations.md)
+  - abbr
+  - attr_list
+  - pymdownx.snippets:
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  # Listas "- [ ]" / "- [x]" como casillas (checklists de las fases).
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search:
+      lang: es
+
+# Muchas páginas enlazan deliberadamente a fuentes fuera de docs_dir
+# (ansible/, repo symintel/gitops) en vez de duplicar su contenido aquí.
+# MkDocs no puede validar esos archivos por estar fuera de docs/,
+# así que se bajan a "info" para no romper `mkdocs build --strict`.
+validation:
+  links:
+    not_found: info
+
+# Recargar mkdocs serve al editar el glosario
+watch:
+  - includes
+
+nav:
+  - Empieza aquí:
+      - Inicio: index.md
+  - Implementación:
+      - Visión general: implementacion/index.md
+      - "Fase 0 — Preparación": implementacion/fase-0-preparacion.md
+      - "Fase 1 — Red": implementacion/fase-1-red.md
+      - "Fase 2 — Incus": implementacion/fase-2-incus.md
+      - "Fase 3 — K3s": implementacion/fase-3-k3s.md
+      - "Fase 4 — GitOps": implementacion/fase-4-gitops.md
+      - "Fase 5 — vCluster": implementacion/fase-5-vcluster.md
+      - "Fase 6 — CAPN": implementacion/fase-6-capn.md
+      - Resumen del HomeLab: implementacion/resumen-homelab.md
+      - Stack tecnológico: implementacion/stack-tecnologico.md
+      - Apéndice — Desinstalar K3s: implementacion/apendice-desinstalar.md
+  - Operación:
+      - Procedimientos de rutina: operacion/index.md
+      - Agregar un repo: operacion/agregar-repo.md
+      - Agregar un nodo: operacion/agregar-nodo.md
+      - Sacar o reemplazar un nodo: operacion/sacar-nodo.md
+      - Agregar un disco a un nodo: operacion/agregar-disco.md
+      - Backups y snapshots de Incus: operacion/backups-incus.md
+      - Actualizar K3s: operacion/actualizar-k3s.md
+      - Rotar credenciales: operacion/rotar-credenciales.md
+      - Pipeline de gitops: operacion/pipeline-gitops.md
+  - Arquitectura:
+      - "Overview + C4 (Nivel 1-2)": architecture/overview.md
+      - "Nivel 3 — Componentes": architecture/nivel-3-componentes.md
+      - "Nivel 4 — Despliegue": architecture/nivel-4-despliegue.md
+  - Referencia técnica:
+      - Hardware:
+          - Inventario: hardware/inventory.md
+          - Discovery (Ansible): hardware/discovery.md
+      - Red: networking/index.md
+      - Incus:
+          - Clúster: incus/cluster-setup.md
+      - K3s:
+          - Instalación manual: k3s/index.md
+          - Opciones del playbook: k3s/playbook-options.md
+      - Ansible:
+          - Catálogo de roles: ansible/index.md
+      - GitOps:
+          - Catálogo y troubleshooting: gitops/index.md
+          - vCluster Platform: vcluster/index.md
+      - CAPN: capn/index.md
+      - Storage: storage/index.md
+      - Secretos: secrets/index.md
+      - "Plataforma symintel — GitHub": symintel/github.md
+      - Glosario: glosario.md
+      - Seguridad:
+          - Hardening post-incidente: security/hardening-post-incidente.md
+  - Labs:
+      - Cinc/Chef: labs/cinc/index.md

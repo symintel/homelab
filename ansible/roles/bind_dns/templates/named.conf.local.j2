@@ -1,0 +1,14 @@
+zone "mco.local" {
+        type master;
+        file "/var/lib/bind/db.mco.local";
+};
+
+zone "20.168.192.in-addr.arpa" {
+        type master;
+        file "/var/lib/bind/db.mco.local.inv";
+};
+
+zone "homelab.local" {
+        type master;
+        file "/var/lib/bind/db.homelab.local";
+};

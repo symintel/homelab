@@ -1,0 +1,16 @@
+# Generado por rol netplan_bridge — no editar a mano.
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ bridge_iface }}:
+      dhcp4: no
+  bridges:
+    br0:
+      interfaces: [{{ bridge_iface }}]
+      addresses: [{{ static_ip }}/{{ lan_prefix_length }}]
+      routes:
+        - to: default
+          via: {{ gateway }}
+      nameservers:
+        addresses: [{{ dns_primary }}, {{ gateway }}]

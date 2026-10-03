@@ -1,0 +1,207 @@
+---
+# host_hardening — baseline de endurecimiento post-incidente (ver README.md
+# para el contexto: exposicion en DMZ + password default -> deborah
+# comprometida y reinstalada). Foco: SSH, cuentas
+# default, sysctl basico, auditd. NO toca ip_forward/bridge-nf-call-iptables
+# (los necesita Incus/K3s, gestionados aparte por roles/k3s_prereqs).
+
+# --- Verificar: no aplicar PasswordAuthentication=no sin key cargada ----
+- name: Determinar el usuario con el que Ansible se conecto (antes de become)
+  ansible.builtin.set_fact:
+    host_hardening_connect_user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+
+- name: "Verificar: authorized_keys del usuario (no-root)"
+  ansible.builtin.stat:
+    path: "/home/{{ host_hardening_connect_user }}/.ssh/authorized_keys"
+  register: host_hardening_authorized_keys_user
+  when:
+    - host_hardening_ssh_password_authentication == "no"
+    - host_hardening_connect_user != "root"
+
+- name: "Verificar: authorized_keys de root"
+  ansible.builtin.stat:
+    path: /root/.ssh/authorized_keys
+  register: host_hardening_authorized_keys_root
+  when:
+    - host_hardening_ssh_password_authentication == "no"
+    - host_hardening_connect_user == "root"
+
+- name: "Verificar: abortar si no hay ninguna SSH key cargada"
+  ansible.builtin.assert:
+    that: >-
+      (host_hardening_connect_user == 'root'
+        and host_hardening_authorized_keys_root.stat.exists
+        and host_hardening_authorized_keys_root.stat.size > 0)
+      or
+      (host_hardening_connect_user != 'root'
+        and host_hardening_authorized_keys_user.stat.exists
+        and host_hardening_authorized_keys_user.stat.size > 0)
+    fail_msg: >-
+      No se encontro authorized_keys para '{{ host_hardening_connect_user }}' en
+      {{ inventory_hostname }}. Cargar una SSH key ANTES de correr este rol:
+      con PasswordAuthentication=no te quedarias afuera del host.
+    success_msg: "OK: {{ host_hardening_connect_user }} tiene authorized_keys en {{ inventory_hostname }}."
+  when: host_hardening_ssh_password_authentication == "no"
+
+# --- SSH ------------------------------------------------------------------
+- name: Banner legal /etc/issue.net
+  ansible.builtin.template:
+    src: issue.net.j2
+    dest: /etc/issue.net
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Drop-in de hardening SSH (sshd_config.d)
+  ansible.builtin.template:
+    src: 99-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify:
+    - Validar sshd
+    - Recargar sshd
+
+# --- sysctl (endurecimiento de red, sin tocar ip_forward/bridge-nf) --------
+- name: Drop-in de sysctl de hardening
+  ansible.builtin.template:
+    src: 90-host-hardening.conf.j2
+    dest: /etc/sysctl.d/90-host-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Aplicar sysctl
+
+# --- Cuentas por defecto conocidas ---------------------------
+- name: Detectar cuentas por defecto conocidas
+  ansible.builtin.command: "getent passwd {{ item }}"
+  register: host_hardening_default_accounts_found
+  loop: >-
+    {{ (host_hardening_known_default_accounts
+        + host_hardening_disable_password_accounts
+        + host_hardening_purge_default_accounts) | unique }}
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Bloquear login por password de las cuentas de host_hardening_disable_password_accounts
+  ansible.builtin.user:
+    name: "{{ item.item }}"
+    password_lock: true
+  loop: "{{ host_hardening_default_accounts_found.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - item.item in host_hardening_disable_password_accounts
+    - item.item not in host_hardening_known_default_accounts + host_hardening_purge_default_accounts
+
+# --- Eliminar cuentas por defecto (borrado completo, home incluido) -
+- name: "Verificar: nunca eliminar la cuenta con la que Ansible esta conectado"
+  ansible.builtin.assert:
+    that: host_hardening_connect_user not in host_hardening_known_default_accounts + host_hardening_purge_default_accounts
+    fail_msg: >-
+      '{{ host_hardening_connect_user }}' esta en la lista de cuentas a eliminar y es la
+      cuenta con la que Ansible esta conectado a {{ inventory_hostname }}
+      ahora mismo -- borrarla te dejaria afuera. Conectate con otra cuenta
+      admin.
+
+- name: Eliminar las cuentas por defecto (home incluido)
+  ansible.builtin.user:
+    name: "{{ item.item }}"
+    state: absent
+    remove: true
+  loop: "{{ host_hardening_default_accounts_found.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - item.item in host_hardening_known_default_accounts + host_hardening_purge_default_accounts
+
+# --- Regenerar SSH host keys (solo hosts recien reinstalados desde imagen) -
+- name: "Host keys SSH: verificar si ya se regeneraron en este host"
+  ansible.builtin.stat:
+    path: /etc/ssh/.host_hardening_keys_regenerated
+  register: host_hardening_keys_marker
+  when: host_hardening_regenerate_ssh_host_keys
+
+- name: "Host keys SSH: borrar las existentes (de la imagen clonada)"
+  ansible.builtin.shell: rm -f /etc/ssh/ssh_host_*
+  when:
+    - host_hardening_regenerate_ssh_host_keys
+    - not host_hardening_keys_marker.stat.exists
+  changed_when: true
+
+- name: "Host keys SSH: regenerar (ssh-keygen -A)"
+  ansible.builtin.command: ssh-keygen -A
+  when:
+    - host_hardening_regenerate_ssh_host_keys
+    - not host_hardening_keys_marker.stat.exists
+  changed_when: true
+  notify: Recargar sshd
+
+- name: "Host keys SSH: marcar como regeneradas (idempotencia)"
+  ansible.builtin.file:
+    path: /etc/ssh/.host_hardening_keys_regenerated
+    state: touch
+    mode: "0600"
+  when:
+    - host_hardening_regenerate_ssh_host_keys
+    - not host_hardening_keys_marker.stat.exists
+
+# --- auditd (visibilidad post-incidente) -------------------------------
+- name: Instalar auditd
+  ansible.builtin.apt:
+    name: auditd
+    state: present
+  when: host_hardening_enable_auditd
+  register: host_hardening_auditd_pkg
+
+- name: Reglas de auditoria basicas (cuentas, sudo, ssh)
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/90-host-hardening.rules
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      -w /etc/passwd -p wa -k identity
+      -w /etc/shadow -p wa -k identity
+      -w /etc/sudoers -p wa -k privilege_escalation
+      -w /etc/sudoers.d/ -p wa -k privilege_escalation
+      -w /etc/ssh/sshd_config -p wa -k sshd_config
+      -w /etc/ssh/sshd_config.d/ -p wa -k sshd_config
+  when: host_hardening_enable_auditd
+  register: host_hardening_audit_rules
+
+- name: Cargar reglas de auditd (augenrules)
+  ansible.builtin.command: augenrules --load
+  when: host_hardening_enable_auditd and host_hardening_audit_rules is changed
+  changed_when: false
+
+- name: Habilitar auditd
+  ansible.builtin.systemd:
+    name: auditd
+    enabled: true
+    state: started
+  when:
+    - host_hardening_enable_auditd
+    - not (ansible_check_mode and host_hardening_auditd_pkg is changed)
+
+# --- Sincronizacion horaria (systemd-timesyncd) -------------------------
+- name: Instalar systemd-timesyncd
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+  when: host_hardening_enable_time_sync
+  register: host_hardening_timesyncd_pkg
+
+- name: Habilitar systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+  when:
+    - host_hardening_enable_time_sync
+    - not (ansible_check_mode and host_hardening_timesyncd_pkg is changed)

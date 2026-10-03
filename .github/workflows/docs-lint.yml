@@ -1,0 +1,54 @@
+name: Lint docs y manifiestos (solo en Pull Requests)
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@v17
+        with:
+          globs: 'docs/**/*.md README.md'
+
+      - name: Build de prueba de MkDocs (sin publicar)
+        run: |
+          pip install -r requirements.txt
+          mkdocs build --strict --clean
+
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Ansible y collections
+        run: |
+          pip install ansible ansible-lint
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: ansible-lint
+        run: ansible-lint ansible/
+
+      - name: Syntax-check playbooks
+        run: |
+          cd ansible
+          for pb in playbook-*.yml; do
+            ansible-playbook --syntax-check -i inventory.ini "$pb"
+          done
+
+  opentofu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+
+      - name: tofu fmt -check y validate
+        run: |
+          cd opentofu
+          tofu fmt -check -recursive
+          tofu init -backend=false
+          tofu validate

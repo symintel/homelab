@@ -1,0 +1,4 @@
+# Las tarjetas/tags/stepper del rediseño de docs/ usan HTML crudo a
+# propósito (clases de docs/stylesheets/extra.css), por eso MD033 va apagado.
+config:
+  MD033: false

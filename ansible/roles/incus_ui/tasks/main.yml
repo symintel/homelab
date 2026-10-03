@@ -1,0 +1,21 @@
+---
+- name: Instalar UI nativa de Incus
+  ansible.builtin.apt:
+    name: incus-ui-canonical
+    state: present
+    update_cache: true
+  when: not ansible_check_mode
+
+- name: Leer core.https_address actual
+  ansible.builtin.command: incus config get core.https_address
+  register: incus_https_current
+  changed_when: false
+  failed_when: false
+
+- name: Configurar core.https_address para la UI
+  ansible.builtin.command: "incus config set core.https_address {{ incus_ui_https_address }}"
+  register: incus_https_set
+  changed_when: incus_https_set.rc == 0
+  when:
+    - (incus_https_current.stdout | default('') | trim) != (incus_ui_https_address | trim)
+    - not ansible_check_mode

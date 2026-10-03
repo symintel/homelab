@@ -1,0 +1,15 @@
+---
+incus_role: "Miembro (scheduler manual, quorum only)"
+incus_cluster_role: member
+incus_cluster_groups: [x86-nodes, default]
+incus_scheduler_manual: true
+k3s_role: agent
+ip_static: true
+k3s_agent_kubelet_args:
+  - max-pods=110
+k3s_node_labels:
+  workload-tier: light
+  node.longhorn.io/create-default-disk: "false"
+ansible_python_interpreter: /usr/bin/python3
+has_wifi: true
+wifi_iface: wlo1

@@ -1,0 +1,9 @@
+---
+incus_role: "Bootstrap / leader (pendiente instalación)"
+incus_cluster_role: bootstrap
+incus_cluster_groups: [x86-nodes, default]
+k3s_role: agent
+ip_static: true
+k3s_node_labels:
+  node.longhorn.io/create-default-disk: "true"
+ansible_python_interpreter: /usr/bin/python3

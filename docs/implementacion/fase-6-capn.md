@@ -1,0 +1,117 @@
+# Fase 6 — CAPN (opcional)
+
+## Objetivo
+
+Provisionar **workload clusters** kubeadm sobre instancias Incus vía
+[Cluster API](https://cluster-api.sigs.k8s.io/) y [CAPN](https://capn.linuxcontainers.org/).
+
+## Qué aprendes
+
+CAPI (Cluster API) declara clusters como recursos Kubernetes; CAPN (Cluster API Provider for Incus) traduce `LXCMachine` en
+instancias Incus — clusters efímeros sin tocar el management K3s (distribución ligera de Kubernetes).
+
+## Stack de esta fase
+
+```mermaid
+sequenceDiagram
+  participant Op as Operador
+  participant K3s as K3s_management
+  participant CAPI as Cluster_API
+  participant CAPN as CAPN_controller
+  participant Incus as Incus_API
+  participant WL as Workload_cluster
+  Op->>K3s: clusterctl_init
+  Op->>K3s: apply_demo_yaml
+  CAPI->>CAPN: reconcile_LXCMachine
+  CAPN->>Incus: crear_LXC
+  Incus->>WL: kubeadm_listo
+  Op->>WL: kubectl_workload
+```
+
+- **[Cluster API](https://cluster-api.sigs.k8s.io/)** — API (Application Programming Interface) declarativa; Fase 6.
+- **[CAPN](https://capn.linuxcontainers.org/)** — Provider Incus; Fase 6.
+- **[clusterctl](https://cluster-api.sigs.k8s.io/user/quick-start.html)** — Bootstrap CAPI en el management cluster.
+- **[Incus](https://linuxcontainers.org/incus/docs/main/)** — Runtime de instancias; Fase 2.
+- **[Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets)** — Credenciales Incus cifradas en git.
+
+Profundización: [CAPN](../capn/index.md) · [Secretos](../secrets/index.md)
+
+## Antes de empezar
+
+- [ ] [Fase 2 — Incus](fase-2-incus.md) cluster healthy.
+- [ ] [Fase 4 — GitOps](fase-4-gitops.md) con Sealed Secrets operativo.
+- [ ] Credencial Incus sellada (`lxc-secret`).
+
+La [Fase 5 — vCluster](fase-5-vcluster.md) es opcional: no hace falta para esta fase.
+
+## Ejecutar
+
+### Instalar clusterctl e init CAPN
+
+```bash
+curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.10.10/clusterctl-linux-amd64 -o clusterctl
+chmod +x clusterctl && sudo mv clusterctl /usr/local/bin/
+mkdir -p ~/.cluster-api
+curl -o ~/.cluster-api/clusterctl.yaml https://capn.linuxcontainers.org/static/v0.1/clusterctl.yaml
+clusterctl init -i incus
+```
+
+### Generar y aplicar cluster demo
+
+Ver comandos completos en [CAPN — profundización](../capn/index.md).
+
+```bash
+kubectl apply -f gitops/argocd/apps/capn-demo.yaml
+# Sync manual en ArgoCD
+```
+
+## Opciones
+
+| Decisión | Default HomeLab |
+|---|---|
+| Sync ArgoCD | Manual (efímero, evita borrados accidentales) |
+| Target workers | `@arm64-nodes` (deborah) / CP `@x86-nodes` |
+
+<div class="card">
+  <div class="card-kicker">Análisis de trade-offs</div>
+  <div class="option-grid">
+    <div class="card-col">
+      <div class="card-title">Sync manual</div>
+      <div class="text-muted">Clusters efímeros no se prunean solos</div>
+      <div class="text-muted">Apply + Sync en UI cada vez</div>
+    </div>
+    <div class="card-col">
+      <div class="card-title">Workers en <code>@arm64-nodes</code></div>
+      <div class="text-muted">Aprovecha 31 GB de deborah</div>
+      <div class="text-muted">Menos margen si deborah ya es CP K3s</div>
+    </div>
+    <div class="card-col">
+      <div class="card-title">CP en <code>@x86-nodes</code></div>
+      <div class="text-muted">Separación CP workload / management</div>
+      <div class="text-muted">Más RAM en nodos x86 limitados</div>
+    </div>
+    <div class="card-col">
+      <div class="card-title">CAPN vs vCluster</div>
+      <div class="text-muted">VMs/Incus reales; kubeadm completo</div>
+      <div class="text-muted">Mucha más RAM que vCluster en pods</div>
+    </div>
+  </div>
+</div>
+
+## Verificar
+
+```bash
+kubectl get clusters
+kubectl get machines
+```
+
+## Si falla
+
+| Síntoma | Revisar |
+|---|---|
+| Machine stuck | Secret Incus, IP Incus en `lxc-secret` |
+| Image pull | [images.linuxcontainers.org](https://images.linuxcontainers.org/) |
+
+## Siguiente
+
+**[→ Resumen del HomeLab](resumen-homelab.md)** · [Stack tecnológico](stack-tecnologico.md)

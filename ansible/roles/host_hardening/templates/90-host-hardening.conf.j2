@@ -1,0 +1,34 @@
+# Generado por rol host_hardening — no editar a mano.
+# Archivo separado de /etc/sysctl.d/k3s.conf (roles/k3s_prereqs) a proposito:
+# NO tocar aca net.ipv4.ip_forward ni net.bridge.bridge-nf-call-iptables,
+# los necesitan Incus/K3s y ya los gestiona ese otro rol.
+
+# rp_filter en modo loose (2), no strict (1): con br0 + interfaces del
+# CNI conviviendo en el mismo host, el modo strict puede descartar trafico
+# de retorno legitimo por rutas asimetricas.
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
+
+# No aceptar ni enviar redirects ICMP, ni paquetes con source routing.
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+
+# SYN cookies contra SYN flood basico.
+net.ipv4.tcp_syncookies = 1
+
+# No loguear martians (br0 recibe trafico L2 variado de las instancias
+# Incus; evita ruido en dmesg sin bajar seguridad real).
+net.ipv4.conf.all.log_martians = 0
+
+# Restringir lectura de punteros de kernel y de dmesg a root.
+kernel.kptr_restrict = 1
+kernel.dmesg_restrict = 1
+
+# No generar core dumps de binarios setuid.
+fs.suid_dumpable = 0

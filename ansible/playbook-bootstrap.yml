@@ -1,0 +1,8 @@
+---
+# Bootstrap de SO para los 3 nodos: paquete Incus + bridge de red.
+# Ejecutar: ansible-playbook -i inventory.ini playbook-bootstrap.yml
+- name: Bootstrap de nodos Incus
+  hosts: incus_cluster
+  become: true
+  roles:
+    - role: incus_install

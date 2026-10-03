@@ -1,0 +1,19 @@
+# Generado por rol host_hardening — no editar a mano.
+# Drop-in (Debian incluye "Include /etc/ssh/sshd_config.d/*.conf" en el
+# sshd_config base) para no tocar el archivo principal del paquete.
+
+Port {{ host_hardening_ssh_port }}
+PermitRootLogin {{ host_hardening_ssh_permit_root_login }}
+PasswordAuthentication {{ host_hardening_ssh_password_authentication }}
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+PubkeyAuthentication yes
+X11Forwarding no
+MaxAuthTries {{ host_hardening_ssh_max_auth_tries }}
+LoginGraceTime {{ host_hardening_ssh_login_grace_time }}
+ClientAliveInterval {{ host_hardening_ssh_client_alive_interval }}
+ClientAliveCountMax {{ host_hardening_ssh_client_alive_count_max }}
+Banner /etc/issue.net
+{% if host_hardening_ssh_allow_users %}
+AllowUsers {{ host_hardening_ssh_allow_users | join(' ') }}
+{% endif %}

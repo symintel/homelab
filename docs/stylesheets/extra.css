@@ -1,0 +1,267 @@
+/* Gradiente azul → morado en header y tabs (restaurado). El acento morado
+   en enlaces, componentes y admonitions sigue en el cuerpo de la página.
+   Se declara también con el selector de esquema para ganar especificidad
+   sobre las reglas de color que Material aplica en modo oscuro (slate). */
+.md-header,
+.md-tabs,
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: #4f46e5;
+  background-image: linear-gradient(120deg, #3730a3 0%, #4f46e5 45%, #7c3aed 100%);
+}
+.md-tabs__link {
+  color: rgba(255, 255, 255, 0.82);
+  opacity: 1;
+}
+.md-tabs__link:hover {
+  color: #fff;
+}
+.md-tabs__link--active {
+  color: #fff !important;
+  border-bottom: 2px solid #fff;
+}
+
+/* Título del sitio con un ligero degradado de texto */
+.md-header__title {
+  font-weight: 600;
+}
+
+/* Links dentro del contenido: violeta en vez del indigo default,
+   para que combine con el header sin perder el contraste de Material */
+.md-typeset a {
+  color: #6d28d9;
+}
+.md-typeset a:hover {
+  color: #7c3aed;
+}
+[data-md-color-scheme="slate"] .md-typeset a {
+  color: #a78bfa;
+}
+[data-md-color-scheme="slate"] .md-typeset a:hover {
+  color: #c4b5fd;
+}
+
+/* Enlace activo del menú lateral (drawer): color explícito para contraste. */
+.md-nav__link--active,
+.md-nav__item--active > .md-nav__link {
+  color: #6d28d9;
+}
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__item--active > .md-nav__link {
+  color: #a78bfa;
+}
+
+/* Admonitions (los !!! note que usamos en docs/) con acento morado */
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-color: #7c3aed;
+}
+.md-typeset .note > .admonition-title,
+.md-typeset .note > summary {
+  background-color: #7c3aed1a;
+}
+.md-typeset .note > .admonition-title::before,
+.md-typeset .note > summary::before {
+  background-color: #7c3aed;
+}
+
+/* ============================================================
+   Componentes reutilizables (spec 2026-07-11, sección A/C).
+   Usados como HTML plano dentro de Markdown, no como macros.
+   ============================================================ */
+
+.md-typeset .card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 12px 0;
+  background: var(--md-default-bg-color);
+}
+
+.md-typeset .card-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 8px;
+}
+
+.md-typeset .card-title {
+  font-weight: 600;
+  font-size: 14.5px;
+  margin-bottom: 2px;
+}
+
+.md-typeset .card-body,
+.md-typeset .text-muted {
+  font-size: 13px;
+  color: var(--md-default-fg-color--light);
+  margin: 2px 0;
+}
+
+.md-typeset .card-meta {
+  font-size: 12px;
+  color: var(--md-default-fg-color--light);
+  margin-top: 6px;
+}
+
+.md-typeset .card-highlight {
+  color: #7c3aed;
+  font-weight: 700;
+}
+[data-md-color-scheme="slate"] .md-typeset .card-highlight {
+  color: #a78bfa;
+}
+
+.md-typeset .hr {
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  margin: 8px 0;
+}
+
+/* Grid de opciones (C.1): de 2 a 10 columnas sin media queries a mano */
+.md-typeset .option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.md-typeset .card-col {
+  border-left: 2px solid var(--md-default-fg-color--lightest);
+  padding-left: 12px;
+}
+
+.md-typeset .tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  line-height: 1.6;
+}
+.md-typeset .tag-accent {
+  color: #7c3aed;
+}
+[data-md-color-scheme="slate"] .md-typeset .tag-accent {
+  color: #a78bfa;
+}
+.md-typeset .tag-neutral {
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .tag-outline {
+  color: var(--md-default-fg-color);
+}
+/* Etiqueta de estado (p. ej. "En construcción activa" en la portada):
+   violeta del sitio con fondo suave y un punto, para que se destaque. */
+.md-typeset .tag-status {
+  color: #6d28d9;
+  background-color: rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.45);
+  padding: 2px 10px;
+}
+.md-typeset .tag-status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  vertical-align: 1px;
+}
+[data-md-color-scheme="slate"] .md-typeset .tag-status {
+  color: #c4b5fd;
+  background-color: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.5);
+}
+
+.md-typeset .btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #7c3aed;
+  color: #7c3aed;
+  text-decoration: none;
+}
+[data-md-color-scheme="slate"] .md-typeset .btn-outline {
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+/* Stepper de fases (C.3) */
+.md-typeset .stepper {
+  display: flex;
+  flex-direction: column;
+  margin: 16px 0;
+}
+.md-typeset .stepper-item {
+  display: flex;
+  gap: 14px;
+}
+.md-typeset .stepper-dot-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+}
+.md-typeset .stepper-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #7c3aed;
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+[data-md-color-scheme="slate"] .md-typeset .stepper-dot {
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+.md-typeset .stepper-dot--neutral {
+  border-color: var(--md-default-fg-color--lighter);
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .stepper-line {
+  width: 1.5px;
+  flex: 1;
+  min-height: 22px;
+  background: var(--md-default-fg-color--lightest);
+}
+.md-typeset .stepper-card {
+  flex: 1;
+  margin-bottom: 12px;
+}
+
+/* Casillas de las checklists (pymdownx.tasklist, custom_checkbox).
+   Material dibuja la casilla sin marcar con el mismo ícono de check en gris
+   al 7%: casi invisible y se confunde con una marcada. Sin marcar = círculo
+   vacío bien visible; marcada = check en el violeta del sitio (en vez del
+   verde default de Material). */
+.md-typeset [type="checkbox"]:checked + .task-list-indicator::before {
+  background-color: #7c3aed;
+}
+[data-md-color-scheme="slate"] .md-typeset [type="checkbox"]:checked + .task-list-indicator::before {
+  background-color: #a78bfa;
+}
+.md-typeset [type="checkbox"]:not(:checked) + .task-list-indicator::before {
+  background-color: var(--md-default-fg-color--light);
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20m0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16"/></svg>');
+          mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20m0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16"/></svg>');
+}
+
+/* Tablas: el código de la primera columna (nombres de campos, items,
+   Secrets) no se corta a mitad de palabra ("installatio / n_id"). El resto
+   de columnas sigue pudiendo partir URLs largas. */
+.md-typeset table:not([class]) td:first-child code {
+  white-space: nowrap;
+  word-break: normal;
+}

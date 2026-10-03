@@ -1,0 +1,25 @@
+---
+bind_dns_chroot_dir: /var/lib/named
+
+# Directorios del chroot (root:bind 0750)
+bind_dns_chroot_dirs:
+  - ""
+  - dev
+  - etc
+  - usr
+  - usr/share
+  - var
+  - var/cache
+  - var/lib
+  - run
+  - run/systemd
+
+# Bind mounts hacia el chroot (origen fuera del chroot -> ruta dentro)
+bind_dns_chroot_mounts:
+  - { src: /dev/null, path: dev/null, kind: file }
+  - { src: /dev/random, path: dev/random, kind: file }
+  - { src: /usr/share/dns, path: usr/share/dns, kind: dir }
+  - { src: /var/cache/bind, path: var/cache/bind, kind: dir }
+  - { src: /var/lib/bind, path: var/lib/bind, kind: dir }
+  - { src: /run/named, path: run/named, kind: dir }
+  - { src: /run/systemd/notify, path: run/systemd/notify, kind: file }

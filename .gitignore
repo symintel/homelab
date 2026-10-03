@@ -1,0 +1,47 @@
+# Secretos en texto plano -- nunca commitear
+*-plano.yaml
+secret-plano.yaml
+lxc-secret.yaml
+*.pem
+*.key
+!**/kubernetes/**/*.key.example
+
+# Estado local de OpenTofu/Terraform
+opentofu/.terraform/
+opentofu/*.tfstate
+opentofu/*.tfstate.backup
+opentofu/.terraform.lock.hcl
+
+# Llaves SOPS/age locales
+key.txt
+*.agekey
+
+# Kubeconfigs
+kubeconfig*
+*.kubeconfig
+
+# Build de MkDocs (se genera en CI, no se commitea)
+site/
+
+# Entorno Python local
+.venv/
+
+# macOS
+.DS_Store
+
+# Reportes de discovery de hardware (datos en vivo, se regeneran con
+# ansible/playbook-discovery.yml -- no versionar)
+ansible/reports/
+
+# Password de Ansible Vault -- nunca commitear
+.vault_pass_homelab
+
+# Resguardo: memorias/planes/bitacoras de sesiones de trabajo no van en el
+# repo (ver CLAUDE.md). Si alguna herramienta los crea aca, que no se commiteen.
+.superpowers/
+
+# Cache de bytecode Python
+__pycache__/
+*.pyc
+CLAUDE.md
+.claude

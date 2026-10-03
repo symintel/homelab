@@ -1,0 +1,52 @@
+---
+# Opciones del playbook K3s (bootstrap). Ver docs/k3s/playbook-options.md
+k3s_install:
+  core:
+    version: "v1.36.2+k3s1"
+    disable_components:
+      - traefik
+      - servicelb
+    cluster_cidr: "10.42.0.0/16"
+    service_cidr: "10.43.0.0/16"
+    cni: calico  # flannel | canal | calico | cilium
+    flannel_backend: vxlan  # solo si cni == flannel: vxlan | host-gw | wireguard-native
+    write_kubeconfig_mode: "600"
+    tls_sans_extra: []
+    embedded_registry: false
+
+  kube_vip:
+    enabled: false
+    address: "192.168.20.4"
+    interface: br0
+    mode: arp
+    image_version: v0.8.7
+
+  gitops_argocd:
+    enabled: true
+    version: v2.14.2
+    gitops_repo_url: https://github.com/symintel/gitops
+
+  node_labels:
+    enabled: true
+    at_join: false
+
+  traefik_cleanup:
+    enabled: true
+
+  fetch_kubeconfig:
+    enabled: true
+    dest: "{{ lookup('env', 'HOME') }}/.kube/homelab-k3s.yaml"
+
+  os_hardening:
+    enabled: false
+    reboot_schedule:
+      deborah: "04:00"
+      invincible: "04:20"
+      oliver: "04:40"
+
+# Derivadas para roles existentes (compatibilidad)
+k3s_version: "{{ k3s_install.core.version }}"
+k3s_disable_components: "{{ k3s_install.core.disable_components }}"
+k3s_write_kubeconfig_mode: "{{ k3s_install.core.write_kubeconfig_mode }}"
+k3s_api_url: >-
+  https://{{ k3s_install.kube_vip.address if k3s_install.kube_vip.enabled else k3s_control_plane_host }}:6443

@@ -1,0 +1,34 @@
+---
+# playbook-incus-cluster.yml — bootstrap, join, groups, scheduler, UI
+#
+# Storage default: driver dir, pool local, ≥20 GB libres por nodo.
+# Ver docs/implementacion/fase-2-incus.md#requisitos-de-almacenamiento
+
+incus_cluster_leader: invincible
+incus_storage_driver: dir
+incus_storage_pool: local
+incus_storage_path: /var/lib/incus/storage-pools/local
+incus_storage_min_free_gb: 20
+incus_bridge: br0
+incus_ui_https_address: ":8443"
+
+# Cluster groups (creados en post; asignación por host)
+incus_cluster_all_groups:
+  - x86-nodes
+  - arm64-nodes
+
+# Se calculan desde host_vars/<nodo>.yml (incus_cluster_groups e
+# incus_scheduler_manual): al agregar un nodo no hay que tocar este archivo.
+incus_cluster_group_assignments: >-
+  {{ dict(groups['incus_cluster']
+     | zip(groups['incus_cluster'] | map('extract', hostvars, 'incus_cluster_groups') | list)) }}
+
+incus_cluster_manual_scheduler_hosts: >-
+  {{ groups['incus_cluster'] | map('extract', hostvars)
+     | selectattr('incus_scheduler_manual', 'defined')
+     | selectattr('incus_scheduler_manual')
+     | map(attribute='inventory_hostname') | list }}
+
+# Alternativas (no implementadas en preseed salvo override en host_vars):
+# incus_storage_driver: btrfs | zfs | lvm
+# incus_storage_device / incus_storage_loop_size — solo con host_var explícito

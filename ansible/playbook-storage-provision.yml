@@ -1,0 +1,19 @@
+---
+# Formatea, monta y wirea a Longhorn/Incus el/los disco(s) libres
+# detectados por playbook-discovery.yml (ver reports/<host>.md, seccion
+# "Recomendaciones de almacenamiento", antes de correr esto).
+#
+# DESTRUCTIVO: mkfs borra cualquier dato existente en los discos listados
+# en `storage_provision_disks` (host_vars). Requiere definir esa variable
+# por host antes de ejecutar -- no hay default, y sin ella este playbook
+# no hace nada en ese host.
+#
+# Ejecutar:
+#   ansible-playbook -i inventory.ini playbook-storage-provision.yml --limit <host>
+
+- name: Provisionar disco(s) libres para Longhorn o Incus
+  hosts: incus_cluster
+  become: true
+  roles:
+    - role: storage_provision
+      when: storage_provision_disks is defined

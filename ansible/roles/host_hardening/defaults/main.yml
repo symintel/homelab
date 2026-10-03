@@ -1,0 +1,49 @@
+---
+# host_hardening — valores por defecto.
+# Ver README.md del rol para el razonamiento de cada bloque.
+
+# --- SSH ----------------------------------------------------------------
+host_hardening_ssh_port: 22
+host_hardening_ssh_permit_root_login: "no"
+host_hardening_ssh_password_authentication: "no"
+host_hardening_ssh_max_auth_tries: 3
+host_hardening_ssh_login_grace_time: 20
+host_hardening_ssh_client_alive_interval: 300
+host_hardening_ssh_client_alive_count_max: 2
+host_hardening_ssh_allow_users: []  # vacio = no restringe por usuario (solo por key)
+
+# --- Cuentas por defecto ---------------------------------------------------
+# Usuarios tipicos de imagenes SBC/cloud con password default documentada.
+# Si existen en el host, se ELIMINAN (con su home). El rol se niega a
+# eliminar la cuenta con la que Ansible esta conectado.
+host_hardening_known_default_accounts:
+  - orangepi
+  - pi
+  - ubuntu
+  - debian
+
+# Cuentas adicionales a eliminar en un host puntual (host_vars/<host>.yml).
+host_hardening_purge_default_accounts: []
+
+# Cuentas a las que solo se les bloquea el login por password (usermod -L),
+# sin borrarlas.
+host_hardening_disable_password_accounts: []
+
+# Regenerar las host keys SSH (borra las existentes + ssh-keygen -A). Solo
+# tiene sentido en un host recien reinstalado desde una imagen clonada
+# (SBCs como Orange Pi a veces reusan las mismas host keys "de fabrica" en
+# todas las unidades del mismo modelo/imagen). Idempotente via un archivo
+# marca (/etc/ssh/.host_hardening_keys_regenerated) -- seguro dejarlo en
+# true de forma permanente en el host_vars de un host ya regenerado.
+host_hardening_regenerate_ssh_host_keys: false
+
+# --- auditd -----------------------------------------------------------
+host_hardening_enable_auditd: true
+
+# --- Sincronizacion horaria ---------------------------------------------
+host_hardening_enable_time_sync: true
+
+# --- Banner legal ----------------------------------------------------
+host_hardening_banner_text: |
+  HomeLab Symintel
+  Acceso restringido. Toda la actividad puede ser auditada.

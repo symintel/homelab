@@ -1,0 +1,220 @@
+# Ficha de hardware — {{ node_report.hostname }}
+
+**IP:** {{ node_report.ip }}
+**Escaneado:** {{ node_report.fecha_scan }}
+
+## CPU
+
+| Campo | Valor |
+|---|---|
+| Arquitectura | {{ node_report.arquitectura }} |
+| Modelo | {{ node_report.modelo_cpu }} |
+| Núcleos físicos | {{ node_report.nucleos_fisicos }} |
+| Núcleos lógicos | {{ node_report.nucleos_logicos }} |
+
+## Memoria
+
+| Campo | Valor |
+|---|---|
+| RAM total | {{ node_report.ram_total_gb }} GB ({{ node_report.ram_total_mb }} MB) |
+| Swap total | {{ node_report.swap_total_mb }} MB |
+
+## Almacenamiento
+
+{% set uso_map = {} %}
+{% for line in node_report.discos_flags | default([]) %}
+{% set fparts = line.split('|') %}
+{% if fparts | length >= 2 %}
+{% set _ = uso_map.update({fparts[0]: fparts[1]}) %}
+{% endif %}
+{% endfor %}
+| Disco | Rotacional | Tamaño | Modelo | Uso |
+|---|---|---|---|---|
+{% for line in node_report.discos %}
+{% set parts = line.split('|') %}
+{% if parts | length >= 4 %}
+{% set uso = uso_map.get(parts[0], 'NA') %}
+| {{ parts[0] }} | {{ 'HDD (rotacional)' if parts[1] == '1' else 'SSD/NVMe (no rotacional)' if parts[1] == '0' else 'NA' }} | {{ parts[2] }} | {{ parts[3] }} | {{ '🟢 LIBRE' if uso == 'libre' else '⚠️ REVISAR (tamaño implausible)' if uso == 'revisar' else 'En uso' if uso == 'en_uso' else 'Sistema (no asignable)' if uso == 'sistema' else 'NA' }} |
+{% endif %}
+{% endfor %}
+
+**Benchmark I/O (escritura 4k):** `{{ node_report.io_benchmark }}`
+
+> Nota: valores bajos de latencia y altas IOPS favorecen el rol de control-plane (etcd es sensible a fsync). Ejecutar en horario de baja carga para no sesgar el resultado.
+
+### Recomendaciones de almacenamiento
+
+{% set libres = [] %}
+{% set revisar = [] %}
+{% for line in node_report.discos_flags | default([]) %}
+{% set fparts = line.split('|') %}
+{% if fparts | length >= 3 and fparts[1] == 'libre' %}
+{% set _ = libres.append(fparts[0] + ' (' + fparts[2] + ')') %}
+{% elif fparts | length >= 3 and fparts[1] == 'revisar' %}
+{% set _ = revisar.append(fparts[0] + ' (' + fparts[2] + ')') %}
+{% endif %}
+{% endfor %}
+{% set longhorn_eligible = (k3s_node_labels | default({})).get('node.longhorn.io/create-default-disk', 'false') == 'true' %}
+{% if libres | length > 0 %}
+- **Disco(s) libres sin usar:** {{ libres | join(', ') }}
+
+| Opción | Aplica en este nodo | A favor | En contra |
+|---|---|---|---|
+| **Longhorn — disco dedicado** | {{ 'Sí' if longhorn_eligible else 'No (node.longhorn.io/create-default-disk no es "true" en este nodo)' }} | Separa PVs replicados del management plane del disco de sistema; menos contención de I/O | Requiere anotar el nodo K8s (día 2); migrar volúmenes después si cambia de opinión |
+| **Incus — storage pool nuevo** | Sí | Más capacidad para VMs/LXCMachine de clústeres de workload (CAPN) | Compite por el mismo disco si también se quiere usar para Longhorn ahí |
+| **Dejar libre** | Sí | Sin riesgo, decide con más info (ej. terminar el `fio` pendiente de `docs/hardware/inventory.md`) | Recurso sin aprovechar mientras tanto |
+
+  - Cualquiera de las dos primeras opciones se aplica con el role `storage_provision` (`ansible/roles/storage_provision/README.md`) una vez decidido cuál usar — nada se aplica automáticamente desde este reporte.
+  - **¿Usable para Incus tal como está el repo hoy?** Dos caminos, ambos ya soportados sin más cambios de código: (1) **pool `local` con dispositivo dedicado** — el bootstrap/join de `incus_cluster` ya soporta `incus_storage_device`/`incus_storage_loop_size` como host_var (ver `roles/incus_cluster/README.md`), útil si el rol de este nodo es `bootstrap` y el pool `local` aún no se inicializó; (2) **pool nuevo y separado**, operación estándar día 2 en cualquier momento: `incus storage create <nombre> dir source=<mount_path>` — `storage_provision` ya lo automatiza con `consumer: incus`.
+{% else %}
+- Sin discos libres detectados en este nodo — todo el almacenamiento asignable ya está montado.
+{% endif %}
+{% if revisar | length > 0 %}
+- **Revisar a mano (tamaño implausible, probable lector SD/USB vacío mal detectado, no un disco real):** {{ revisar | join(', ') }} — no recomendado como almacenamiento hasta confirmar con `lsblk`/`fdisk -l` en el propio nodo.
+{% endif %}
+
+## Red
+
+{% for iface in node_report.interfaces_red %}
+{% set iparts = iface.split(':') %}
+{% set speed = (iparts[1] | default('NAMbps')).replace('Mbps', '') %}
+{% if speed is match('^[0-9]+$') and speed | int < discovery_network_floor_mbps %}
+- ⚠️ {{ iface }} — por debajo de {{ discovery_network_floor_mbps }}Mbps{{ ' (este nodo es Longhorn-elegible: la réplica cruza esta red, un link lento aquí es cuello de botella real)' if (k3s_node_labels | default({})).get('node.longhorn.io/create-default-disk', 'false') == 'true' else '' }}
+{% else %}
+- {{ iface }}
+{% endif %}
+{% endfor %}
+
+## Sistema operativo
+
+| Campo | Valor |
+|---|---|
+| Distribución | {{ node_report.so_distribucion }} |
+| Kernel | {{ node_report.kernel }} |
+| Uptime (s) | {{ node_report.uptime_segundos }} |
+| Temperatura | {{ node_report.temperatura }}{{ ' ⚠️ (>' + discovery_thermal_warning_c | string + '°C — medición puntual, no bajo carga sostenida; no reemplaza una prueba real)' if (node_report.temperatura | regex_search('[0-9.]+') | default('0') | float) > discovery_thermal_warning_c else '' }} |
+
+### Recomendaciones de sistema operativo
+
+Este nodo hace **Incus + K3s a la vez** (no es K3s-only) — eso determina qué alternativas de SO
+aplican de verdad, no solo cuáles son populares para Kubernetes en general.
+
+| Opción | ¿Aplica hoy? | Por qué |
+|---|---|---|
+| **Debian (actual)** | Sí — quedarse | Soporte oficial de Incus/Zabbly, propósito general, lo que ya corre en los 3 nodos |
+| **Ubuntu Server LTS** | Alternativa cercana | Mismo modelo (Incus soportado oficialmente), kernels HWE más nuevos sin esperar backports de Debian — útil si hace falta hardware muy reciente |
+| **Talos Linux / Flatcar Container Linux** | No hoy | Inmutables, mínima superficie de ataque, excelentes *solo* para nodos K3s dedicados — no permiten instalar Incus (necesita gestión de paquetes tradicional, módulos de kernel). Aplicarían si algún día este nodo deja de hacer Incus. |
+| **NixOS** | No recomendado para este caso | Reproducibilidad declarativa real, pero curva de aprendizaje alta y soporte de Incus menos directo que Debian/Ubuntu — el costo de migración no se justifica aquí |
+
+{% if node_report.arquitectura == 'aarch64' %}
+**Específico de este nodo (ARM/SBC):** el kernel (`{{ node_report.kernel }}`) es un build vendor de
+Rockchip sobre Debian plano (confirmado: no hay `/etc/armbian-release`, no es Armbian) — típico en SBCs
+donde el soporte mainline del SoC todavía madura. Da mejor soporte de GPU/NPU/video que el kernel
+genérico de Debian, a cambio de depender del mantenedor del paquete vendor para actualizaciones de
+seguridad del kernel, en vez de Debian directamente. **Armbian** (open source, basado en Debian/Ubuntu)
+es la alternativa a evaluar si mantener el kernel vendor a mano se vuelve una carga — está construido
+específicamente para este patrón (SBC + kernel vendor + base Debian/Ubuntu), con mejor tracking de
+versiones que hacerlo manualmente.
+{% endif %}
+
+## Virtualización / stack instalado
+
+`{{ node_report.virtualizacion }}`
+
+## Paquetes clave
+
+| Paquete | Versión |
+|---|---|
+{% for line in node_report.paquetes %}
+{% set parts = line.split('|') %}
+{% if parts | length >= 2 %}
+| {{ parts[0] }} | {{ parts[1] }} |
+{% endif %}
+{% endfor %}
+
+## Instancias Incus (containers/VMs)
+
+{% if node_report.incus_instancias | length > 0 %}
+| Nombre | Tipo | Estado |
+|---|---|---|
+{% for inst in node_report.incus_instancias %}
+| {{ inst.name | default('NA') }} | {{ inst.type | default('NA') }} | {{ inst.status | default('NA') }} |
+{% endfor %}
+{% else %}
+_(sin instancias Incus, o Incus no instalado en este nodo)_
+{% endif %}
+
+## K3s — nodos del clúster
+
+```
+{{ node_report.k3s_nodos }}
+```
+
+## K3s — pods (todos los namespaces)
+
+```
+{{ node_report.k3s_pods }}
+```
+
+## Contenedores sueltos (containerd/Docker, fuera de K3s/Incus)
+
+```
+{{ node_report.contenedores_sueltos }}
+```
+
+## Servicios systemd relevantes
+
+| Servicio | Estado |
+|---|---|
+{% for line in node_report.servicios %}
+{% set parts = line.split('|') %}
+{% if parts | length >= 2 %}
+| {{ parts[0] }} | {{ parts[1] }} |
+{% endif %}
+{% endfor %}
+
+## Puertos en escucha
+
+```
+{{ node_report.puertos }}
+```
+
+## Uso de disco por filesystem
+
+```
+{{ node_report.uso_disco }}
+```
+
+### Recomendaciones — esquema de partición del SO
+
+{% set has_var_separate = '/var' in node_report.uso_disco %}
+{% set swap_recommended_mb = ([node_report.ram_total_mb | float / 2, 8192] | min) | round(0) %}
+{% set swap_actual_mb = node_report.swap_total_mb | default(0) | float %}
+{% set swap_diff_raw = ((swap_actual_mb - swap_recommended_mb) / swap_recommended_mb * 100) if swap_recommended_mb > 0 else 0 %}
+{% set swap_diff_pct = (swap_diff_raw if swap_diff_raw >= 0 else -swap_diff_raw) | round(0) %}
+
+- **`/var` separado de `/`:** {{ '✅ sí' if has_var_separate else '⚠️ no — todo containerd/k3s/Longhorn/Incus escribe sobre la misma partición que el SO' }}
+- **Swap:** {{ swap_actual_mb | round(0) }} MB actual vs. {{ swap_recommended_mb }} MB recomendado (fórmula `min(RAM/2, 8GB)`){{ ' — ⚠️ difiere %d%%' | format(swap_diff_pct) if swap_diff_pct > 10 else ' — ✅ consistente' }}
+
+**No se recomienda reparticionar en vivo** — sin LVM, `resize2fs`/`parted` sobre un disco raíz montado es riesgoso (puede romper el boot) y no vale la pena dado el espacio libre actual. Si este nodo se reinstala alguna vez, usar un esquema con `/var` separado y swap según la fórmula de arriba. Ver también [`docs/architecture/vm-partition-scheme.md`](../../docs/architecture/vm-partition-scheme.md) para el esquema recomendado en VMs nuevas.
+
+## Módulos de kernel (overlay / br_netfilter / veth)
+
+```
+{{ node_report.modulos_kernel }}
+```
+
+> Necesarios para K3s (CNI, overlayfs de containerd) e Incus (bridges). Si falta alguno, revisar `modprobe` y `/etc/modules-load.d/`.
+
+## Firewall
+
+```
+{{ node_report.firewall }}
+```
+
+## Rol actual (según docs/hardware/inventory.md)
+
+- Rol Incus: **{{ node_report.rol_incus }}**
+- Rol K3s (inventory): **{{ node_report.rol_k3s }}**
+- Rol K3s (detectado): **{{ node_report.k3s_rol_detectado }}**
+- ¿Datos confirman el rol?: **{{ node_report.rol_confirmado }}**

@@ -1,0 +1,30 @@
+---
+- name: Preparar servidor Debian (Instalar Python y sudo)
+  hosts: servidores_debian
+  gather_facts: false  # OBLIGATORIO: Evita que Ansible busque Python al iniciar
+
+  tasks:
+    - name: Actualizar repositorios e instalar Python3 y Sudo usando shell puro
+      ansible.builtin.raw: |
+        apt-get update && apt-get install -y python3 sudo
+      changed_when: true
+
+    - name: Recopilar datos del sistema (ahora que Python está instalado)
+      ansible.builtin.gather_facts:
+
+    - name: Agregar el usuario amaceo al grupo sudo
+      ansible.builtin.user:
+        name: amaceo
+        groups: sudo
+        append: yes
+
+    - name: Configurar acceso sudo sin contraseña ni TTY para amaceo
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/amaceo
+        content: |
+          amaceo ALL=(ALL:ALL) NOPASSWD: ALL
+          Defaults:amaceo !requiretty
+        owner: root
+        group: root
+        mode: '0440'
+        validate: '/usr/sbin/visudo -cf %s'

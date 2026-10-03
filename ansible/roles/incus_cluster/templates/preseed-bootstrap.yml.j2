@@ -1,0 +1,27 @@
+config:
+  core.https_address: {{ static_ip }}:8443
+storage_pools:
+  - name: {{ incus_storage_pool }}
+    driver: {{ incus_storage_driver }}
+{% if incus_storage_device is defined %}
+    config:
+      source: {{ incus_storage_device }}
+{% elif incus_storage_loop_size is defined %}
+    config:
+      size: {{ incus_storage_loop_size }}
+{% endif %}
+profiles:
+  - name: default
+    devices:
+      root:
+        path: /
+        pool: {{ incus_storage_pool }}
+        type: disk
+      eth0:
+        name: eth0
+        nictype: bridged
+        parent: {{ incus_bridge }}
+        type: nic
+cluster:
+  server_name: {{ inventory_hostname }}
+  enabled: true

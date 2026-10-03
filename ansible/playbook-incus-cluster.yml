@@ -1,0 +1,33 @@
+---
+# Bootstrap / join / post — ver group_vars/incus_cluster.yml
+- name: Bootstrap del clúster Incus (leader)
+  hosts: invincible
+  become: true
+  vars:
+    incus_cluster_phase: bootstrap
+  roles:
+    - role: incus_cluster
+  tags: [bootstrap, always]
+
+# Todos los nodos del clúster menos el leader: un nodo nuevo en inventory.ini
+# (grupo incus_cluster) se une sin editar este playbook.
+- name: Unir miembros al clúster Incus
+  hosts: incus_cluster:!invincible
+  become: true
+  serial: 1
+  vars:
+    incus_cluster_phase: join
+  roles:
+    - role: incus_cluster
+  tags: [join, always]
+
+- name: Cluster groups, scheduler e UI Incus
+  hosts: invincible
+  become: true
+  vars:
+    incus_cluster_phase: post
+  roles:
+    - role: incus_cluster
+      tags: [groups, scheduler, always]
+    - role: incus_ui
+      tags: [ui, always]

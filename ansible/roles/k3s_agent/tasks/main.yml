@@ -1,0 +1,36 @@
+---
+- name: Comprobar si K3s agent ya esta activo
+  ansible.builtin.command: systemctl is-active k3s-agent
+  register: k3s_agent_active
+  changed_when: false
+  failed_when: false
+
+- name: Resolver token del server
+  ansible.builtin.set_fact:
+    k3s_join_token: "{{ hostvars[groups['k3s_server'][0]]['k3s_token'] | default(k3s_token | default('')) }}"
+  no_log: true
+
+- name: Fallar si no hay token de union
+  ansible.builtin.fail:
+    msg: >-
+      Falta k3s_token. Ejecuta primero el play del server o pasa -e k3s_token=<token>.
+  when:
+    - k3s_join_token | length == 0
+    - k3s_agent_active.stdout != "active"
+
+- name: Instalar K3s agent (worker)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="{{ k3s_api_url }}" \
+      K3S_TOKEN="{{ k3s_join_token }}" \
+      INSTALL_K3S_EXEC="agent --node-ip {{ ansible_host }} \
+      {% for arg in k3s_agent_kubelet_args | default([]) %}--kubelet-arg={{ arg }} {% endfor %}\
+      {% if k3s_install.node_labels.enabled and k3s_install.node_labels.at_join | default(false) %}\
+      {% for key, val in (k3s_node_labels | default({})).items() %}--node-label {{ key }}={{ val }} {% endfor %}\
+      {% endif %}" sh -
+  args:
+    executable: /bin/bash
+    creates: /etc/systemd/system/k3s-agent.service
+  when: k3s_agent_active.stdout != "active"
+  no_log: true

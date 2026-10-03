@@ -1,0 +1,19 @@
+---
+# WiFi de respaldo del cable en los nodos con hardware WiFi (has_wifi:
+# true en host_vars -- hoy: oliver, deborah). invincible no tiene WiFi
+# fisico, queda fuera.
+#
+# Requiere:
+#   - wifi_ssid/wifi_psk cargados en group_vars/incus_cluster/vault.yml.
+#
+# Ejecutar:
+#   ansible-playbook -i inventory.ini playbook-wifi-failover.yml
+
+- name: Configurar WiFi de respaldo
+  hosts: incus_cluster
+  become: true
+  tasks:
+    - name: Aplicar wifi_failover en nodos con hardware WiFi
+      ansible.builtin.include_role:
+        name: wifi_failover
+      when: has_wifi | default(false)

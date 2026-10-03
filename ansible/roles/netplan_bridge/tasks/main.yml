@@ -1,0 +1,183 @@
+---
+# Debian: netplan + br0 en todos los nodos Incus, y /etc/resolv.conf estatico.
+
+- name: Confirmar interfaz fisica real antes de tocar la red
+  ansible.builtin.command: ip -br link
+  register: ip_links
+  changed_when: false
+  check_mode: false
+
+- name: Mostrar interfaces detectadas
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} -> interfaces: {{ ip_links.stdout_lines }}"
+
+- name: Eliminar systemd-resolved
+  ansible.builtin.apt:
+    name: systemd-resolved
+    state: absent
+    purge: true
+
+- name: Escribir /etc/resolv.conf estatico
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      search {{ dns_domain }}
+      nameserver {{ dns_primary }}
+      nameserver {{ gateway }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Instalar netplan.io (requerido en Debian)
+  ansible.builtin.apt:
+    name: netplan.io
+    state: present
+    update_cache: true
+
+- name: Habilitar systemd-networkd (renderer de netplan en Debian)
+  ansible.builtin.systemd:
+    name: systemd-networkd
+    enabled: true
+    state: started
+
+- name: Crear directorio /etc/netplan
+  ansible.builtin.file:
+    path: /etc/netplan
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Detectar ifupdown gestionando la interfaz fisica
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -rE '(^|[[:space:]])(auto|iface)[[:space:]]+{{ bridge_iface }}([[:space:]]|$)' \
+      /etc/network/interfaces /etc/network/interfaces.d/ 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: ifupdown_iface
+  changed_when: false
+
+- name: Respaldo de /etc/network/interfaces
+  ansible.builtin.copy:
+    src: /etc/network/interfaces
+    dest: /etc/network/interfaces.ansible.bak
+    remote_src: true
+    mode: "0644"
+    force: false
+  when:
+    - ifupdown_iface.stdout | length > 0
+    - not ansible_check_mode
+
+- name: Quitar configuracion ifupdown de la interfaz fisica (conflicto con netplan)
+  ansible.builtin.copy:
+    dest: /etc/network/interfaces
+    content: |
+      # Gestionado por Ansible/netplan — respaldo: /etc/network/interfaces.ansible.bak
+      auto lo
+      iface lo inet loopback
+
+      source /etc/network/interfaces.d/*
+    mode: "0644"
+  when:
+    - ifupdown_iface.stdout | length > 0
+    - not ansible_check_mode
+
+- name: Desactivar ifupdown en interfaces.d para la NIC fisica
+  ansible.builtin.file:
+    path: "/etc/network/interfaces.d/{{ bridge_iface }}.cfg"
+    state: absent
+  when: not ansible_check_mode
+
+- name: Pausa de seguridad -- aplicar netplan puede cortar la sesion SSH actual
+  ansible.builtin.pause:
+    prompt: >-
+      Se va a fijar {{ inventory_hostname }} en {{ static_ip }} via {{ bridge_iface }} (br0),
+      con gateway {{ gateway }} y nameservers [{{ dns_primary }}, {{ gateway }}].
+      Si estas conectado por {{ ansible_host }} la sesion se cortara.
+      Consola/IPMI a mano recomendada. Enter para seguir, Ctrl+C+A para abortar.
+  when: not ansible_check_mode
+
+- name: Generar /etc/netplan/br0.yaml con la IP fija del host
+  ansible.builtin.template:
+    src: br0.yaml.j2
+    dest: /etc/netplan/br0.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  register: netplan_config
+
+- name: Detener ifupdown (evita conflicto con netplan/systemd-networkd)
+  ansible.builtin.systemd:
+    name: networking
+    enabled: false
+    state: stopped
+  async: 15
+  poll: 0
+  failed_when: false
+  ignore_errors: true
+  ignore_unreachable: true
+  when:
+    - not ansible_check_mode
+    - netplan_config is changed
+
+# Igual que arriba: parar ifupdown puede tirar la interfaz fisica (via
+# ifdown -a en el ExecStop del unit) y cortar la sesion SSH actual ANTES
+# de que netplan levante br0 -- por eso async+ignore, no esperar su
+# resultado de forma sincronica. Una pausa corta le da tiempo al kernel a
+# procesar el down de la interfaz antes de pedirle a netplan que la suba
+# de nuevo con la config nueva.
+- name: Pausa breve tras detener ifupdown
+  ansible.builtin.pause:
+    seconds: 3
+  when:
+    - not ansible_check_mode
+    - netplan_config is changed
+
+- name: Aplicar netplan
+  ansible.builtin.command: netplan apply
+  async: 5
+  poll: 0
+  when:
+    - not ansible_check_mode
+    - netplan_config is changed
+  ignore_errors: true
+  ignore_unreachable: true
+
+- name: Esperar SSH en la IP destino tras netplan apply
+  ansible.builtin.wait_for:
+    host: "{{ static_ip }}"
+    port: 22
+    delay: 3
+    timeout: 120
+  delegate_to: localhost
+  become: false
+  when:
+    - not ansible_check_mode
+    - netplan_config is changed
+
+- name: Reconectar usando la IP fija en el resto del playbook
+  ansible.builtin.add_host:
+    name: "{{ inventory_hostname }}"
+    ansible_host: "{{ static_ip }}"
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - netplan_config is changed
+
+- name: Resetear conexion SSH tras cambio de IP
+  ansible.builtin.meta: reset_connection
+  when:
+    - not ansible_check_mode
+    - netplan_config is changed
+
+- name: Verificar IP en br0
+  ansible.builtin.command: ip -br addr show br0
+  register: br0_addr
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Mostrar br0
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} br0: {{ br0_addr.stdout }}"
+  when: not ansible_check_mode

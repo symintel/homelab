@@ -1,0 +1,15 @@
+---
+- name: Tareas comunes Incus cluster
+  ansible.builtin.include_tasks: common.yml
+
+- name: Bootstrap del clúster
+  ansible.builtin.include_tasks: bootstrap.yml
+  when: incus_cluster_phase == 'bootstrap'
+
+- name: Join al clúster
+  ansible.builtin.include_tasks: join.yml
+  when: incus_cluster_phase == 'join'
+
+- name: Post-configuración del clúster (groups, scheduler)
+  ansible.builtin.include_tasks: post.yml
+  when: incus_cluster_phase == 'post'

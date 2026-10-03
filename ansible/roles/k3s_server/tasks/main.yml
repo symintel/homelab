@@ -1,0 +1,60 @@
+---
+- name: Calcular TLS SANs efectivos del server
+  ansible.builtin.set_fact:
+    k3s_effective_tls_sans: >-
+      {{
+        [ansible_host, inventory_hostname]
+        + ([k3s_install.kube_vip.address] if k3s_install.kube_vip.enabled else [])
+        + k3s_install.core.tls_sans_extra
+        + k3s_server_tls_sans | default([])
+      | unique | list
+      }}
+    k3s_effective_api_host: >-
+      {{ k3s_install.kube_vip.address if k3s_install.kube_vip.enabled else ansible_host }}
+
+- name: Comprobar si K3s server ya esta activo
+  ansible.builtin.command: systemctl is-active k3s
+  register: k3s_server_active
+  changed_when: false
+  failed_when: false
+
+- name: Instalar K3s server (control-plane)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      INSTALL_K3S_EXEC="server \
+      {% for c in k3s_disable_components %}--disable {{ c }} {% endfor %}\
+      --write-kubeconfig-mode {{ k3s_write_kubeconfig_mode }} \
+      --node-ip {{ ansible_host }} \
+      --cluster-cidr {{ k3s_install.core.cluster_cidr }} \
+      --service-cidr {{ k3s_install.core.service_cidr }} \
+      --flannel-backend {{ 'none' if (k3s_install.core.cni | default('flannel')) != 'flannel' else k3s_install.core.flannel_backend }} \
+      {% if (k3s_install.core.cni | default('flannel')) != 'flannel' %}--disable-network-policy {% endif %}\
+      {% if k3s_install.core.embedded_registry %}--embedded-registry {% endif %}\
+      {% for san in k3s_effective_tls_sans %}--tls-san {{ san }} {% endfor %}" sh -
+  args:
+    executable: /bin/bash
+    creates: /etc/rancher/k3s/k3s.yaml
+  when: k3s_server_active.stdout != "active"
+
+- name: Esperar API server
+  ansible.builtin.wait_for:
+    port: 6443
+    host: "{{ k3s_effective_api_host }}"
+    delay: 5
+    timeout: 120
+  when:
+    - not ansible_check_mode
+    - k3s_server_active.stdout != "active"
+
+- name: Leer token de union para workers
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token
+  when: not ansible_check_mode
+
+- name: Publicar token para plays siguientes
+  ansible.builtin.set_fact:
+    k3s_token: "{{ k3s_node_token.content | b64decode | trim }}"
+  when: k3s_node_token is defined and k3s_node_token.content is defined
+  no_log: true

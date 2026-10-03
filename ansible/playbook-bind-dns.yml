@@ -1,0 +1,13 @@
+---
+# Instala BIND en deborah dentro de un chroot, lo configura para escuchar en
+# su IP de la LAN y sirve las zonas mco.local (directa y reversa) generadas
+# desde el inventario.
+#
+# Ejecutar:
+#   ansible-playbook -i inventory.ini playbook-bind-dns.yml
+
+- name: Instalar y configurar BIND (mco.local)
+  hosts: deborah
+  become: true
+  roles:
+    - role: bind_dns

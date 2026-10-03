@@ -1,0 +1,18 @@
+$TTL    300
+@       IN      SOA     ns.mco.local. root.mco.local. (
+                   {{ '%Y%m%d01' | strftime }}           ; Serial
+                          300           ; Refresh [5m]
+                          150           ; Retry   [2.5m]
+                         3600           ; Expire  [1h]
+                          600 )         ; Negative Cache TTL [1h]
+;
+@       IN      NS      ns.mco.local.
+@       IN      MX      10 ns.mco.local.
+
+ns     IN      A       {{ dns_primary }}
+k3s    IN      A       {{ k3s_control_plane_host }}
+www    IN      CNAME   ns
+
+{% for host in groups['incus_cluster'] %}
+{{ host }}     IN      A       {{ hostvars[host].static_ip }}
+{% endfor %}

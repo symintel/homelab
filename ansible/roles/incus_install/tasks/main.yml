@@ -1,0 +1,28 @@
+---
+- name: Instalar Incus desde repo Zabbly (idempotente)
+  ansible.builtin.get_url:
+    url: https://pkgs.zabbly.com/get/incus-stable
+    dest: /tmp/incus-install.sh
+    mode: "0755"
+  when: not ansible_check_mode
+
+- name: Ejecutar instalador de Incus
+  ansible.builtin.command: /tmp/incus-install.sh
+  args:
+    creates: /usr/bin/incus
+  when: not ansible_check_mode
+
+- name: Verificar arquitectura detectada
+  ansible.builtin.command: uname -m
+  register: incus_arch
+  changed_when: false
+
+- name: Mostrar arquitectura del nodo
+  ansible.builtin.debug:
+    msg: "Nodo {{ inventory_hostname }} -> arquitectura {{ incus_arch.stdout }}"
+
+- name: Nota sobre bridge br0
+  ansible.builtin.debug:
+    msg: >-
+      El bridge br0 (docs/networking/index.md) se configura con
+      playbook-set-static-ip.yml en los 3 nodos.

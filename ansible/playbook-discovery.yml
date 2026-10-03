@@ -1,0 +1,509 @@
+---
+# Discovery de hardware/software de los 3 nodos del clúster (invincible,
+# oliver, deborah). Genera un archivo Markdown por nodo en
+# ./reports/<hostname>.md con los datos necesarios para decidir/confirmar
+# roles (control-plane vs worker, storage) con mediciones reales en vez de
+# solo specs nominales de docs/hardware/inventory.md.
+#
+# Ejecutar: ansible-playbook -i inventory.ini playbook-discovery.yml
+#
+# El segundo play (al final de este archivo) genera ./reports/summary.md
+# consolidando los 3 nodos lado a lado. Vive en el MISMO archivo (y no en
+# uno separado) a propósito: necesita leer `hostvars[host].node_report` de
+# los otros nodos, que solo existen en memoria durante la misma invocación
+# de ansible-playbook -- si estuviera en un playbook aparte habría que
+# acordarse de pasar ambos archivos juntos en el mismo comando.
+#
+# Requiere collection community.general si se agregan módulos extra más
+# adelante; hoy el playbook solo usa shell/command + facts nativos.
+
+- name: Discovery de nodos homelab
+  hosts: incus_cluster
+  become: true
+  gather_facts: true
+
+  tasks:
+
+    - name: Detectar discos y si son NVMe/SSD/rotacional
+      ansible.builtin.shell: |
+        set -o pipefail
+        for d in /sys/block/*/; do
+          dev=$(basename "$d")
+          case "$dev" in
+            loop*|ram*) continue ;;
+          esac
+          rota=$(cat "$d/queue/rotational" 2>/dev/null || echo "NA")
+          size_sectors=$(cat "$d/size" 2>/dev/null || echo 0)
+          size_gb=$(awk -v s="$size_sectors" 'BEGIN{printf "%.1f", s*512/1024/1024/1024}')
+          # No usar `cat ... | xargs || echo NA`: con stdin vacio (archivo
+          # inexistente, comun en mmcblk*/zram*/mtdblock*) xargs igual corre
+          # `echo` con cero argumentos e imprime una linea vacia; pipefail
+          # marca la pipeline como fallida y el `|| echo NA` se dispara
+          # TAMBIEN, dejando $model con un salto de linea embebido que luego
+          # rompe el reporte (una fila "NA" suelta sin separadores '|').
+          model=$(cat "$d/device/model" 2>/dev/null)
+          model=$(printf '%s' "$model" | xargs 2>/dev/null)
+          [ -z "$model" ] && model="NA"
+          echo "${dev}|${rota}|${size_gb}GB|${model}"
+        done
+      args:
+        executable: /bin/bash
+      register: disk_raw
+      changed_when: false
+
+    - name: Elegir directorio writable para benchmark I/O (evitar /tmp noexec)
+      ansible.builtin.shell: |
+        set -o pipefail
+        for candidate in /var/tmp "$HOME" /srv /; do
+          [ -d "$candidate" ] || continue
+          if touch "$candidate/.io_probe" 2>/dev/null; then
+            rm -f "$candidate/.io_probe"
+            echo "$candidate"
+            exit 0
+          fi
+        done
+        echo "/var/tmp"
+      args:
+        executable: /bin/bash
+      register: io_dir_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Medir latencia de escritura básica (fio si está disponible, si no dd)
+      # etcd (control-plane) es sensible a fsync -- este benchmark es
+      # deliberadamente el criterio #1 para confirmar el rol de control-plane.
+      ansible.builtin.shell: |
+        set -o pipefail
+        bench_dir="{{ io_dir_raw.stdout | trim }}"
+        testfile="${bench_dir}/homelab_io_test"
+        if command -v fio >/dev/null 2>&1; then
+          fio --name=quicktest --filename="$testfile" --size=128M --rw=write \
+              --bs=4k --direct=1 --numjobs=1 --runtime=5 --time_based \
+              --group_reporting 2>/dev/null | grep -E "write:|clat" | tr '\n' ' '
+          rm -f "$testfile"
+        else
+          dd if=/dev/zero of="$testfile" bs=4k count=10000 oflag=direct 2>&1 | tail -1
+          rm -f "$testfile"
+        fi
+      args:
+        executable: /bin/bash
+      register: io_bench
+      changed_when: false
+      failed_when: false
+
+    - name: Extraer throughput I/O aproximado (MB/s) para comparar entre nodos
+      # io_bench mezcla salida de fio o dd (formatos distintos) -- se
+      # extrae el primer numero seguido de MB/s o MiB/s como aproximacion
+      # comparable. Nota: MiB/s (fio) y MB/s (dd) no son exactamente la
+      # misma unidad -- la comparacion es aproximada, no una medicion
+      # cientifica.
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "{{ io_bench.stdout | default('') }}" \
+          | grep -oE '[0-9]+\.?[0-9]*[[:space:]]?(MB/s|MiB/s)' \
+          | head -1 \
+          | grep -oE '^[0-9]+\.?[0-9]*' || echo "NA"
+      args:
+        executable: /bin/bash
+      register: io_throughput_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Leer temperatura si hay sensor disponible (vcgencmd / thermal_zone)
+      # Relevante sobre todo para deborah: throttling térmico bajo
+      # carga sostenida es un riesgo real para el rol de control-plane.
+      ansible.builtin.shell: |
+        if command -v vcgencmd >/dev/null 2>&1; then
+          vcgencmd measure_temp
+        elif [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+          t=$(cat /sys/class/thermal/thermal_zone0/temp)
+          awk -v t="$t" 'BEGIN{printf "temp=%.1f'"'"'C\n", t/1000}'
+        else
+          echo "NA"
+        fi
+      args:
+        executable: /bin/bash
+      register: temp_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Detectar velocidad de interfaces de red
+      ansible.builtin.shell: |
+        for i in $(ls /sys/class/net/ | grep -Ev '^(lo|docker|veth|br-|cni|virbr)'); do
+          speed=$(cat /sys/class/net/$i/speed 2>/dev/null || echo "NA")
+          echo "${i}:${speed}Mbps"
+        done
+      args:
+        executable: /bin/bash
+      register: net_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Detectar modelo CPU (x86 y ARM)
+      ansible.builtin.shell: |
+        set -o pipefail
+        if grep -q '^model name' /proc/cpuinfo 2>/dev/null; then
+          grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2 | xargs
+        elif grep -q '^Hardware' /proc/cpuinfo 2>/dev/null; then
+          grep -m1 '^Hardware' /proc/cpuinfo | cut -d: -f2 | xargs
+        else
+          echo "NA"
+        fi
+      args:
+        executable: /bin/bash
+      register: cpu_model_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Detectar rol K3s activo (server vs agent vs ninguno)
+      ansible.builtin.shell: |
+        set -o pipefail
+        role="ninguno"
+        if systemctl is-active k3s >/dev/null 2>&1; then
+          role="server"
+        elif systemctl is-active k3s-agent >/dev/null 2>&1; then
+          role="agent"
+        elif ss -tln 2>/dev/null | grep -q ':6443'; then
+          role="server (proceso, sin unit systemd)"
+        elif pgrep -x k3s-agent >/dev/null 2>&1; then
+          role="agent (proceso, sin unit systemd)"
+        elif command -v k3s >/dev/null 2>&1; then
+          role="binario instalado, servicio inactivo"
+        fi
+        echo "$role"
+      args:
+        executable: /bin/bash
+      register: k3s_role_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Detectar KVM, Incus y K3s ya instalados
+      ansible.builtin.shell: |
+        set -o pipefail
+        kvm_ok="no"
+        [ -e /dev/kvm ] && kvm_ok="yes"
+        incus_ver=$(incus version 2>/dev/null | head -1) || incus_ver="no instalado"
+        k3s_ver=$(k3s --version 2>/dev/null | head -1) || k3s_ver="no instalado"
+        [ -z "$incus_ver" ] && incus_ver="no instalado"
+        [ -z "$k3s_ver" ] && k3s_ver="no instalado"
+        echo "kvm=${kvm_ok}|incus=${incus_ver}|k3s=${k3s_ver}"
+      args:
+        executable: /bin/bash
+      register: virt_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Detectar versiones de paquetes clave (docker, containerd, python3, git, qemu, libvirt)
+      ansible.builtin.shell: |
+        set -o pipefail
+        for bin in docker containerd python3 git qemu-img virsh; do
+          if command -v "$bin" >/dev/null 2>&1; then
+            ver=$("$bin" --version 2>/dev/null | head -1)
+            echo "${bin}|${ver}"
+          else
+            echo "${bin}|no instalado"
+          fi
+        done
+      args:
+        executable: /bin/bash
+      register: packages_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Listar instancias Incus (containers/VMs) en formato JSON
+      ansible.builtin.shell: |
+        set -o pipefail
+        if command -v incus >/dev/null 2>&1; then
+          incus list --format json 2>/dev/null || echo "[]"
+        else
+          echo "[]"
+        fi
+      args:
+        executable: /bin/bash
+      register: incus_instances_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Obtener nodos K3s (kubectl get nodes, si hay acceso al API server)
+      ansible.builtin.shell: |
+        set -o pipefail
+        run_kubectl() {
+          if [ -r /etc/rancher/k3s/k3s.yaml ]; then
+            KUBECONFIG=/etc/rancher/k3s/k3s.yaml k3s kubectl get nodes -o wide 2>/dev/null && return 0
+          fi
+          k3s kubectl get nodes -o wide 2>/dev/null && return 0
+          return 1
+        }
+        if command -v k3s >/dev/null 2>&1; then
+          run_kubectl || echo "sin acceso al API server desde este nodo"
+        else
+          echo "k3s no instalado"
+        fi
+      args:
+        executable: /bin/bash
+      register: k3s_nodes_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Obtener pods K3s en todos los namespaces (si hay acceso al API server)
+      ansible.builtin.shell: |
+        set -o pipefail
+        run_kubectl() {
+          if [ -r /etc/rancher/k3s/k3s.yaml ]; then
+            KUBECONFIG=/etc/rancher/k3s/k3s.yaml k3s kubectl get pods -A -o wide 2>/dev/null && return 0
+          fi
+          k3s kubectl get pods -A -o wide 2>/dev/null && return 0
+          return 1
+        }
+        if command -v k3s >/dev/null 2>&1; then
+          run_kubectl || echo "sin acceso al API server desde este nodo"
+        else
+          echo "k3s no instalado"
+        fi
+      args:
+        executable: /bin/bash
+      register: k3s_pods_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Listar contenedores containerd (crictl) y Docker sueltos, fuera de K3s/Incus
+      ansible.builtin.shell: |
+        set -o pipefail
+        if command -v crictl >/dev/null 2>&1; then
+          echo "--- crictl ---"
+          crictl ps -a 2>/dev/null || echo "no disponible"
+        else
+          echo "crictl no instalado"
+        fi
+        if command -v docker >/dev/null 2>&1; then
+          echo "--- docker ---"
+          docker ps -a 2>/dev/null || echo "no disponible"
+        else
+          echo "docker no instalado"
+        fi
+      args:
+        executable: /bin/bash
+      register: containers_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Estado de servicios systemd relevantes (k3s, incus, docker, DNS, WiFi)
+      ansible.builtin.shell: |
+        set -o pipefail
+        for svc in k3s k3s-agent incus docker containerd systemd-resolved named NetworkManager; do
+          # Unidades instanciadas por plantilla (svc@instancia) no aparecen
+          # en `list-unit-files` con su nombre de instancia -- solo la
+          # plantilla generica (svc@.service) aparece ahi. Se usa la
+          # plantilla para el chequeo de "esta instalado", y el nombre de
+          # instancia completo para is-active/is-enabled (eso si funciona
+          # correctamente por instancia).
+          base="${svc%@*}"
+          if [ "$svc" != "$base" ]; then
+            unit="${base}@.service"
+          else
+            unit="${svc}.service"
+          fi
+          if systemctl list-unit-files "$unit" 2>/dev/null | grep -qE "^${unit}\s"; then
+            active=$(systemctl is-active "$svc" 2>/dev/null)
+            enabled=$(systemctl is-enabled "$svc" 2>/dev/null)
+            [ -z "$active" ] && active="unknown"
+            [ -z "$enabled" ] && enabled="unknown"
+            echo "${svc}|active=${active},enabled=${enabled}"
+          elif [ "$svc" = "k3s" ] && systemctl is-active k3s-agent >/dev/null 2>&1; then
+            echo "${svc}|agent activo (k3s-server no instalado en este nodo)"
+          elif [ "$svc" = "k3s-agent" ] && systemctl is-active k3s >/dev/null 2>&1; then
+            echo "${svc}|server activo (k3s-agent no aplica)"
+          elif pgrep -x "$svc" >/dev/null 2>&1 || pgrep -x "k3s-agent" >/dev/null 2>&1 && [ "$svc" = "k3s-agent" ]; then
+            echo "${svc}|proceso activo, unit no registrada"
+          else
+            echo "${svc}|no instalado"
+          fi
+        done
+      args:
+        executable: /bin/bash
+      register: services_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Puertos en escucha (ss -tlnp)
+      ansible.builtin.shell: |
+        set -o pipefail
+        ss -tlnp 2>/dev/null || echo "ss no disponible"
+      args:
+        executable: /bin/bash
+      register: ports_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Uso de disco por filesystem (df -h, sin tmpfs/overlay/squashfs)
+      ansible.builtin.shell: |
+        set -o pipefail
+        df -h --output=source,fstype,size,used,avail,pcent,target 2>/dev/null \
+          | grep -Ev '^(tmpfs|devtmpfs|overlay|squashfs)' || df -h
+      args:
+        executable: /bin/bash
+      register: disk_usage_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Determinar que discos base estan libres (sin montar) o en uso
+      # Cruza cada disco base detectado (tarea "Detectar discos...") contra
+      # las fuentes montadas reales (df --output=source) para poder
+      # recomendar discos libres en el reporte, en vez de solo listarlos
+      # crudos. zram/loop/particiones de boot/mtd se excluyen a proposito:
+      # no son almacenamiento asignable (swap comprimido, boot de eMMC/SPI).
+      ansible.builtin.shell: |
+        set -o pipefail
+        mounted_sources=$(df --output=source 2>/dev/null | tail -n +2)
+        echo "{{ disk_raw.stdout }}" | while IFS='|' read -r dev rota size_gb model; do
+          [ -z "$dev" ] && continue
+          case "$dev" in
+            zram*|loop*|*boot0|*boot1|mtdblock*)
+              echo "${dev}|sistema|${size_gb}"
+              continue
+              ;;
+          esac
+          used="no"
+          for src in $mounted_sources; do
+            base=$(basename "$src")
+            case "$base" in
+              "${dev}"*) used="si" ;;
+            esac
+          done
+          # Umbral de plausibilidad: > 10TB en este HomeLab (discos reales
+          # documentados no pasan de ~250GB, ver docs/hardware/inventory.md)
+          # casi siempre es un lector SD/USB vacio mal reportado por
+          # /sys/block, no un disco real -- se marca aparte para revisar a
+          # mano en vez de recomendarlo como libre con confianza.
+          size_class=$(awk -v s="$size_gb" -v max="{{ discovery_disk_implausible_gb }}" 'BEGIN{gsub("GB","",s); n=s+0; if (n<1) print "chico"; else if (n>max) print "implausible"; else print "normal"}')
+          if [ "$used" = "si" ]; then
+            echo "${dev}|en_uso|${size_gb}"
+          elif [ "$size_class" = "chico" ]; then
+            echo "${dev}|en_uso|${size_gb}"
+          elif [ "$size_class" = "implausible" ]; then
+            echo "${dev}|revisar|${size_gb}"
+          else
+            echo "${dev}|libre|${size_gb}"
+          fi
+        done
+      args:
+        executable: /bin/bash
+      register: disk_usage_flags
+      changed_when: false
+      failed_when: false
+
+    - name: Módulos de kernel necesarios para K3s/Incus (overlay, br_netfilter, veth)
+      ansible.builtin.shell: |
+        set -o pipefail
+        lsmod | grep -E '^(overlay|br_netfilter|veth)' || echo "ninguno cargado"
+      args:
+        executable: /bin/bash
+      register: kmods_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Estado de firewall (ufw / nftables)
+      ansible.builtin.shell: |
+        set -o pipefail
+        if command -v ufw >/dev/null 2>&1; then
+          echo "--- ufw ---"
+          ufw status verbose 2>/dev/null || echo "no disponible"
+        elif command -v nft >/dev/null 2>&1; then
+          echo "--- nft ---"
+          nft list ruleset 2>/dev/null || echo "no disponible"
+        else
+          echo "sin ufw/nft instalado"
+        fi
+      args:
+        executable: /bin/bash
+      register: firewall_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Construir estructura de datos del reporte
+      # Se usa ansible_facts['...'] (namespace explícito) en vez de las
+      # variables ansible_* de nivel superior porque ese shim de
+      # compatibilidad está deprecado (INJECT_FACTS_AS_VARS). El bug real de
+      # "object of type 'list' has no attribute 1" NO estaba aquí -- era
+      # discos con líneas "NA" sueltas mal formadas, ver comentario en la
+      # tarea "Detectar discos..." más arriba.
+      ansible.builtin.set_fact:
+        node_report:
+          hostname: "{{ inventory_hostname }}"
+          ip: "{{ ansible_host }}"
+          fecha_scan: "{{ '%Y-%m-%d %H:%M' | strftime }}"
+          arquitectura: "{{ ansible_facts['architecture'] }}"
+          modelo_cpu: "{{ cpu_model_raw.stdout | default('NA') | trim }}"
+          k3s_rol_detectado: "{{ k3s_role_raw.stdout | default('NA') | trim }}"
+          rol_incus: "{{ incus_role | default('pendiente bootstrap') }}"
+          rol_k3s: "{{ k3s_role | default('NA') }}"
+          rol_confirmado: >-
+            {%- set detected = k3s_role_raw.stdout | default('') | trim -%}
+            {%- set expected = k3s_role | default('') -%}
+            {%- if expected == 'server' and 'server' in detected -%}
+            sí — server detectado
+            {%- elif expected == 'agent' and 'agent' in detected -%}
+            sí — agent detectado
+            {%- elif detected == 'binario instalado, servicio inactivo' -%}
+            no — binario presente pero servicio caído
+            {%- else -%}
+            revisar — esperado {{ expected }}, detectado {{ detected }}
+            {%- endif -%}
+          nucleos_fisicos: "{{ ansible_facts['processor_cores'] | default('NA') }}"
+          nucleos_logicos: "{{ ansible_facts['processor_vcpus'] | default('NA') }}"
+          ram_total_mb: "{{ ansible_facts['memtotal_mb'] }}"
+          ram_total_gb: "{{ (ansible_facts['memtotal_mb'] / 1024) | round(1) }}"
+          swap_total_mb: "{{ ansible_facts['swaptotal_mb'] | default(0) }}"
+          so_distribucion: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+          kernel: "{{ ansible_facts['kernel'] }}"
+          discos: "{{ disk_raw.stdout_lines }}"
+          discos_flags: "{{ disk_usage_flags.stdout_lines | default([]) }}"
+          io_benchmark: "{{ io_bench.stdout | default('NA') }}"
+          io_throughput_mbs: "{{ io_throughput_raw.stdout | default('NA') | trim }}"
+          temperatura: "{{ temp_raw.stdout | default('NA') }}"
+          interfaces_red: "{{ net_raw.stdout_lines | default([]) }}"
+          virtualizacion: "{{ virt_raw.stdout | default('NA') }}"
+          uptime_segundos: "{{ ansible_facts['uptime_seconds'] | default('NA') }}"
+          paquetes: "{{ packages_raw.stdout_lines | default([]) }}"
+          incus_instancias: "{{ (incus_instances_raw.stdout | default('[]')) | from_json | default([]) }}"
+          k3s_nodos: "{{ k3s_nodes_raw.stdout | default('NA') }}"
+          k3s_pods: "{{ k3s_pods_raw.stdout | default('NA') }}"
+          contenedores_sueltos: "{{ containers_raw.stdout | default('NA') }}"
+          servicios: "{{ services_raw.stdout_lines | default([]) }}"
+          puertos: "{{ ports_raw.stdout | default('NA') }}"
+          uso_disco: "{{ disk_usage_raw.stdout | default('NA') }}"
+          modulos_kernel: "{{ kmods_raw.stdout | default('NA') }}"
+          firewall: "{{ firewall_raw.stdout | default('NA') }}"
+
+    - name: Asegurar que exista el directorio de reportes en el controlador
+      ansible.builtin.file:
+        path: ./reports
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Generar archivo Markdown por nodo (en el controlador Ansible)
+      ansible.builtin.template:
+        src: templates/node_report.md.j2
+        dest: "./reports/{{ inventory_hostname }}.md"
+      delegate_to: localhost
+      become: false
+
+    - name: Confirmar generación
+      ansible.builtin.debug:
+        msg: "Reporte generado: ./reports/{{ inventory_hostname }}.md"
+
+- name: Consolidar reportes de nodos HomeLab
+  hosts: incus_cluster
+  gather_facts: false
+  run_once: true
+  tasks:
+
+    - name: Generar resumen comparativo
+      ansible.builtin.template:
+        src: templates/summary.md.j2
+        dest: ./reports/summary.md
+      delegate_to: localhost
+      become: false

@@ -1,0 +1,70 @@
+---
+# Formatea y monta un disco libre, y lo wirea a Longhorn o a un pool nuevo
+# de Incus, segun `storage_provision_disks` (host_vars). Ver el reporte de
+# discovery (reports/<host>.md, seccion "Recomendaciones de almacenamiento")
+# para decidir que disco/consumer usar antes de correr esto -- es
+# DESTRUCTIVO (mkfs borra el disco).
+
+- name: Pausa de seguridad -- este role formatea el/los disco(s) listados
+  ansible.builtin.pause:
+    prompt: >-
+      Se van a formatear y montar estos discos en {{ inventory_hostname }}:
+      {{ storage_provision_disks | map(attribute='device') | join(', ') }}.
+      Esto BORRA cualquier dato existente en esos dispositivos.
+      Enter para seguir, Ctrl+C+A para abortar.
+  when: not ansible_check_mode
+
+- name: Verificar si el disco ya tiene un filesystem (idempotencia)
+  ansible.builtin.command: "blkid {{ item.device }}"
+  register: blkid_check
+  loop: "{{ storage_provision_disks }}"
+  changed_when: false
+  failed_when: false
+
+- name: Formatear el disco (solo si no tiene filesystem ya)
+  ansible.builtin.filesystem:
+    fstype: "{{ item.item.filesystem }}"
+    dev: "{{ item.item.device }}"
+  loop: "{{ blkid_check.results }}"
+  when: item.rc != 0
+
+- name: Crear el punto de montaje
+  ansible.builtin.file:
+    path: "{{ item.mount_path }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ storage_provision_disks }}"
+
+- name: Obtener UUID del disco para fstab
+  ansible.builtin.command: "blkid -s UUID -o value {{ item.device }}"
+  register: disk_uuid
+  loop: "{{ storage_provision_disks }}"
+  changed_when: false
+
+- name: Montar y persistir en fstab
+  ansible.posix.mount:
+    path: "{{ item.item.mount_path }}"
+    src: "UUID={{ item.stdout }}"
+    fstype: "{{ item.item.filesystem }}"
+    state: mounted
+  loop: "{{ disk_uuid.results }}"
+
+- name: Wirear a Longhorn (anotar el nodo K8s)
+  ansible.builtin.command: >-
+    k3s kubectl annotate node {{ inventory_hostname }}
+    node.longhorn.io/default-disks-config='[{"path":"{{ item.mount_path }}","allowScheduling":true}]'
+    --overwrite
+  loop: "{{ storage_provision_disks }}"
+  when: item.consumer == 'longhorn'
+  changed_when: true
+
+- name: Wirear a Incus (crear pool nuevo)
+  ansible.builtin.command: >-
+    incus storage create {{ item.incus_pool_name }} dir source={{ item.mount_path }}
+  loop: "{{ storage_provision_disks }}"
+  when: item.consumer == 'incus'
+  register: incus_pool_create
+  failed_when:
+    - incus_pool_create.rc != 0
+    - "'already exists' not in incus_pool_create.stderr"
+  changed_when: incus_pool_create.rc == 0

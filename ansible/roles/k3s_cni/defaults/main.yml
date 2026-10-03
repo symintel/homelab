@@ -1,0 +1,9 @@
+---
+k3s_cni_calico_version: v3.29.1
+k3s_cni_cilium_version: v1.16.5
+k3s_cni_canal_manifest_url: >-
+  https://raw.githubusercontent.com/projectcalico/calico/{{ k3s_cni_calico_version }}/manifests/canal.yaml
+k3s_cni_calico_operator_url: >-
+  https://raw.githubusercontent.com/projectcalico/calico/{{ k3s_cni_calico_version }}/manifests/tigera-operator.yaml
+k3s_cni_cilium_manifest_url: >-
+  https://raw.githubusercontent.com/cilium/cilium/{{ k3s_cni_cilium_version }}/install/kubernetes/quick-install.yaml

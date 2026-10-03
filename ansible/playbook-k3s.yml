@@ -1,0 +1,83 @@
+---
+# Convergencia idempotente de K3s (bootstrap bare-metal).
+# Opciones: ansible/group_vars/incus_cluster/k3s_install.yml — docs/k3s/playbook-options.md
+# Ejecutar: ansible-playbook -i inventory.ini playbook-k3s.yml
+#
+# Tags: prereqs | core | server | cni | kube_vip | agent | traefik | labels | argocd | kubeconfig | hardening
+- name: Prerrequisitos K3s en todos los nodos
+  hosts: incus_cluster
+  become: true
+  roles:
+    - role: k3s_prereqs
+  tags: [prereqs, always]
+
+- name: Instalar o verificar K3s server (control-plane)
+  hosts: k3s_server
+  become: true
+  serial: 1
+  roles:
+    - role: k3s_server
+  tags: [server, core]
+
+- name: CNI externo (Canal, Calico, Cilium)
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_cni
+      when: (k3s_install.core.cni | default('flannel')) != 'flannel'
+  tags: [cni, core]
+
+- name: kube-vip VIP control-plane (sin Service LoadBalancer)
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_kube_vip
+      when: k3s_install.kube_vip.enabled | default(false)
+  tags: [kube_vip]
+
+- name: Instalar o verificar K3s agents (workers)
+  hosts: k3s_agent
+  become: true
+  roles:
+    - role: k3s_agent
+  tags: [agent, core]
+
+- name: Limpiar Traefik/svclb residual
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_cleanup_traefik
+      when: k3s_install.traefik_cleanup.enabled | default(true)
+  tags: [traefik]
+
+- name: Etiquetas de nodos (Longhorn, tier, arch)
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_node_labels
+      when: k3s_install.node_labels.enabled | default(true)
+  tags: [labels]
+
+- name: Bootstrap ArgoCD controller (Applications en gitops)
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_argocd
+      when: k3s_install.gitops_argocd.enabled | default(false)
+  tags: [argocd, gitops]
+
+- name: Copiar kubeconfig al operador
+  hosts: k3s_server
+  become: true
+  roles:
+    - role: k3s_fetch_kubeconfig
+      when: k3s_install.fetch_kubeconfig.enabled | default(true)
+  tags: [kubeconfig]
+
+- name: Endurecimiento SO (unattended-upgrades escalonado)
+  hosts: incus_cluster
+  become: true
+  roles:
+    - role: k3s_os_hardening
+      when: k3s_install.os_hardening.enabled | default(true)
+  tags: [hardening]

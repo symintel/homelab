@@ -1,0 +1,20 @@
+---
+# La LAN es un /22 (192.168.20.0-192.168.23.255), no un /24.
+gateway: 192.168.20.1
+lan_prefix_length: 22
+lan_cidr: 192.168.20.0/22
+dns_primary: 192.168.20.5
+dns_domain: mco.local
+k3s_control_plane_host: "192.168.20.5"
+k3s_server_tls_sans:
+  - "192.168.20.5"
+  - "deborah"
+
+# --- Umbrales de playbook-discovery.yml (recomendaciones) ---
+# Configurables a proposito: estos valores reflejan la escala de ESTE
+# homelab (discos de cientos de GB, red domestica 1Gbps). Si este repo se
+# reusa contra otra flota de servidores, ajustar aca -- ningun template ni
+# tarea de discovery tiene estos numeros hardcodeados directamente.
+discovery_disk_implausible_gb: 10000   # > esto = probable lector SD/USB vacio, no un disco real
+discovery_network_floor_mbps: 1000     # interfaces activas por debajo de esto se marcan como advertencia
+discovery_thermal_warning_c: 70        # temperatura puntual por encima de esto se marca como advertencia

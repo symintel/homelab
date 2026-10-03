@@ -1,0 +1,56 @@
+---
+# Desinstala K3s (server + agents) para poder reinstalar con opciones
+# distintas (ej. cambiar CNI) desde cero.
+#
+# DESTRUCTIVO: borra el estado completo del cluster (sqlite/etcd,
+# kubeconfig, reglas de iptables). No borra ArgoCD/GitOps aparte -- eso
+# vive dentro del cluster que se esta borrando.
+#
+# Ejecutar:
+#   ansible-playbook -i inventory.ini playbook-k3s-uninstall.yml
+
+- name: Confirmar antes de desinstalar K3s
+  hosts: incus_cluster
+  gather_facts: false
+  tasks:
+    - name: Pausa de seguridad -- esto borra el cluster K3s completo
+      ansible.builtin.pause:
+        prompt: >-
+          Se va a desinstalar K3s (server y agents) en TODOS los nodos de
+          incus_cluster. Esto borra el estado del cluster (sqlite/etcd,
+          kubeconfig, reglas de iptables). Enter para seguir, Ctrl+C+A
+          para abortar.
+      when: not ansible_check_mode
+      run_once: true
+
+- name: Desinstalar K3s server
+  hosts: k3s_server
+  become: true
+  tasks:
+    - name: Verificar si existe el script de desinstalacion del server
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s-uninstall.sh
+      register: k3s_uninstall_script
+
+    - name: Ejecutar k3s-uninstall.sh
+      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+      when:
+        - k3s_uninstall_script.stat.exists
+        - not ansible_check_mode
+      changed_when: true
+
+- name: Desinstalar K3s agent
+  hosts: k3s_agent
+  become: true
+  tasks:
+    - name: Verificar si existe el script de desinstalacion del agent
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s-agent-uninstall.sh
+      register: k3s_agent_uninstall_script
+
+    - name: Ejecutar k3s-agent-uninstall.sh
+      ansible.builtin.command: /usr/local/bin/k3s-agent-uninstall.sh
+      when:
+        - k3s_agent_uninstall_script.stat.exists
+        - not ansible_check_mode
+      changed_when: true

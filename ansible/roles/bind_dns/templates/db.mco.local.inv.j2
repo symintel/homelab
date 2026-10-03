@@ -1,0 +1,14 @@
+@       IN      SOA     ns.mco.local. root.mco.local. (
+                   {{ '%Y%m%d01' | strftime }}           ; Serial
+                          300           ; Refresh [5m]
+                          120           ; Retry   [10m]
+                        86400           ; Expire  [1d]
+                          600 )         ; Negative Cache TTL [1h]
+;
+@       IN      NS      ns.mco.local.
+
+{% for host in groups['incus_cluster'] %}
+{% set ip = hostvars[host].static_ip %}
+{% set ptr_name = 'ns.mco.local.' if ip == dns_primary else host + '.mco.local.' %}
+{{ ip.split('.')[-1] }}       IN      PTR     {{ ptr_name }}
+{% endfor %}

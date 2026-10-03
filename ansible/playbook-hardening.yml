@@ -1,0 +1,21 @@
+---
+# Baseline de endurecimiento de host (SSH, cuentas
+# default, sysctl, auditd) para los 3 nodos. Ver roles/host_hardening/README.md
+# para el contexto (incidente de deborah: DMZ + password default).
+#
+# IMPORTANTE -- este playbook toca la config de SSH del host. Correr
+# SIEMPRE primero en modo --check, y aplicar host por host la primera vez:
+#
+#   ansible-playbook -i inventory.ini playbook-hardening.yml --check --diff
+#   ansible-playbook -i inventory.ini playbook-hardening.yml --limit deborah
+#   ansible-playbook -i inventory.ini playbook-hardening.yml --limit invincible,oliver
+#
+# El rol aborta solo (assert) si el usuario de conexion no tiene ya una SSH
+# key en authorized_keys, para no dejarte afuera del host al desactivar
+# PasswordAuthentication.
+
+- name: Endurecer los 3 nodos (SSH, cuentas, sysctl, auditd)
+  hosts: incus_cluster
+  become: true
+  roles:
+    - host_hardening

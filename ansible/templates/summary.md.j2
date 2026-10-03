@@ -1,0 +1,162 @@
+# Resumen comparativo — Homelab
+
+Generado a partir de `playbook-discovery.yml`. Usar para confirmar (o
+corregir) los roles de `docs/hardware/inventory.md` con datos medidos, no
+solo specs nominales.
+
+| Nodo | Arch | RAM | Disco principal | I/O 4k (ver ficha) | Temp | KVM | Incus | K3s |
+|---|---|---|---|---|---|---|---|---|
+{% for host in groups['incus_cluster'] %}
+| {{ host }} | {{ hostvars[host].node_report.arquitectura | default('NA') }} | {{ hostvars[host].node_report.ram_total_gb | default('NA') }} GB | {{ hostvars[host].node_report.discos | default([]) | first | default('NA') }} | ver `{{ host }}.md` | {{ hostvars[host].node_report.temperatura | default('NA') }} | {{ hostvars[host].node_report.virtualizacion | default('NA') | regex_search('kvm=[a-z]+') }} | {{ hostvars[host].node_report.virtualizacion | default('NA') | regex_search('incus=[^|]+') }} | {{ hostvars[host].node_report.virtualizacion | default('NA') | regex_search('k3s=[^|]+') }} |
+{% endfor %}
+
+## Fichas individuales
+
+{% for host in groups['incus_cluster'] %}
+- [{{ host }}](./{{ host }}.md)
+{% endfor %}
+
+## Recomendaciones — almacenamiento libre
+
+{% set ns = namespace(any_free=false, any_revisar=false) %}
+{% for host in groups['incus_cluster'] %}
+{% set libres = [] %}
+{% set revisar = [] %}
+{% for line in hostvars[host].node_report.discos_flags | default([]) %}
+{% set fparts = line.split('|') %}
+{% if fparts | length >= 3 and fparts[1] == 'libre' %}
+{% set _ = libres.append(fparts[0] + ' (' + fparts[2] + ')') %}
+{% elif fparts | length >= 3 and fparts[1] == 'revisar' %}
+{% set _ = revisar.append(fparts[0] + ' (' + fparts[2] + ')') %}
+{% endif %}
+{% endfor %}
+{% set longhorn_eligible = (hostvars[host].k3s_node_labels | default({})).get('node.longhorn.io/create-default-disk', 'false') == 'true' %}
+{% if libres | length > 0 %}
+{% set ns.any_free = true %}
+- **{{ host }}**: {{ libres | join(', ') }} — opciones: Incus pool nuevo (siempre aplica){{ ', Longhorn disco dedicado (elegible)' if longhorn_eligible else ' (no elegible para Longhorn)' }}. Ver ficha individual para la tabla de trade-off completa.
+{% endif %}
+{% if revisar | length > 0 %}
+{% set ns.any_revisar = true %}
+- **{{ host }} (revisar a mano, tamaño implausible):** {{ revisar | join(', ') }}
+{% endif %}
+{% endfor %}
+{% if not ns.any_free and not ns.any_revisar %}
+_(sin discos libres detectados en ningún nodo)_
+{% endif %}
+
+## Recomendaciones — ajuste de rol K3s (control-plane vs agent)
+
+| Nodo | I/O aprox (MB/s) | RAM (GB) | Temp | Rol K3s (inventory) | Rol detectado |
+|---|---|---|---|---|---|
+{% for host in groups['incus_cluster'] %}
+| {{ host }} | {{ hostvars[host].node_report.io_throughput_mbs | default('NA') }} | {{ hostvars[host].node_report.ram_total_gb | default('NA') }} | {{ hostvars[host].node_report.temperatura | default('NA') }} | {{ hostvars[host].node_report.rol_k3s | default('NA') }} | {{ hostvars[host].node_report.k3s_rol_detectado | default('NA') }} |
+{% endfor %}
+
+{% set io_ranked = [] %}
+{% for host in groups['incus_cluster'] %}
+{% set io_val = hostvars[host].node_report.io_throughput_mbs | default('NA') %}
+{% if io_val != 'NA' %}
+{% set _ = io_ranked.append((io_val | float, host)) %}
+{% endif %}
+{% endfor %}
+{% set io_sorted = io_ranked | sort(reverse=true) %}
+{% set actual_server_hosts = [] %}
+{% for host in groups['incus_cluster'] %}
+{% if hostvars[host].node_report.rol_k3s | default('') == 'server' %}
+{% set _ = actual_server_hosts.append(host) %}
+{% endif %}
+{% endfor %}
+{% if io_sorted | length > 0 %}
+{% set best_host = io_sorted[0][1] %}
+- **Mejor I/O medido:** {{ best_host }} ({{ io_sorted[0][0] }} MB/s aprox). Rol `server` asignado hoy a: {{ actual_server_hosts | join(', ') if actual_server_hosts | length > 0 else 'ninguno detectado' }}.
+{% if best_host not in actual_server_hosts %}
+- ⚠️ **Considerar reasignación:** {{ best_host }} mide mejor I/O que el/los nodo(s) `server` actual(es), pero no tiene ese rol hoy. No se aplica automáticamente — revisar también estabilidad de alimentación y temperatura bajo carga sostenida (ver `docs/storage/index.md`) antes de decidir.
+{% else %}
+- ✅ El nodo con mejor I/O medido ya es el rol `server` actual.
+{% endif %}
+{% else %}
+_(sin datos de I/O comparables — benchmark no produjo un valor numérico en ningún nodo)_
+{% endif %}
+
+## Recomendaciones — liderazgo Incus
+
+{% set leader = incus_cluster_leader | default('NA') %}
+{% set candidates = [] %}
+{% for host in groups.get('x86_nodes', []) %}
+{% set _ = candidates.append((hostvars[host].node_report.ram_total_gb | default(0) | float, hostvars[host].node_report.nucleos_fisicos | default(0) | int, host)) %}
+{% endfor %}
+{% set candidates_sorted = candidates | sort(reverse=true) %}
+- **Líder actual (`incus_cluster_leader`):** {{ leader }}
+{% if candidates_sorted | length > 0 and candidates_sorted[0][2] != leader %}
+- ℹ️ **{{ candidates_sorted[0][2] }}** tiene más recursos medidos ({{ candidates_sorted[0][0] }} GB RAM, {{ candidates_sorted[0][1] }} núcleos) que el líder actual — considerar si el liderazgo debería reconsiderarse. No es un criterio tan estricto como el de control-plane K3s (etcd); es solo informativo.
+{% else %}
+- ✅ El líder actual ya es el nodo con más recursos medidos entre los candidatos (`x86_nodes`).
+{% endif %}
+
+## Recomendaciones — RAM vs workload-tier
+
+| Nodo | workload-tier | RAM (GB) |
+|---|---|---|
+{% for host in groups['incus_cluster'] %}
+| {{ host }} | {{ (hostvars[host].k3s_node_labels | default({})).get('workload-tier', 'NA') }} | {{ hostvars[host].node_report.ram_total_gb | default('NA') }} |
+{% endfor %}
+
+{% set heavy_ram = [] %}
+{% set light_ram = [] %}
+{% for host in groups['incus_cluster'] %}
+{% set tier = (hostvars[host].k3s_node_labels | default({})).get('workload-tier', '') %}
+{% set ram = hostvars[host].node_report.ram_total_gb | default(0) | float %}
+{% if tier == 'heavy' %}
+{% set _ = heavy_ram.append((ram, host)) %}
+{% elif tier == 'light' %}
+{% set _ = light_ram.append((ram, host)) %}
+{% endif %}
+{% endfor %}
+{% set min_heavy = (heavy_ram | sort)[0] if heavy_ram | length > 0 else none %}
+{% set max_light = (light_ram | sort(reverse=true))[0] if light_ram | length > 0 else none %}
+{% if min_heavy and max_light and min_heavy[0] < max_light[0] %}
+- ⚠️ **Revisar:** {{ min_heavy[1] }} (`heavy`, {{ min_heavy[0] }} GB) tiene menos RAM que {{ max_light[1] }} (`light`, {{ max_light[0] }} GB) — la etiqueta de tier no coincide con la RAM real.
+{% else %}
+- ✅ Sin inconsistencias entre `workload-tier` y RAM medida.
+{% endif %}
+
+## Recomendaciones — esquema de partición del SO
+
+Ver la sección "Recomendaciones — esquema de partición del SO" en cada ficha individual (`/var`
+separado, consistencia de swap contra `min(RAM/2, 8GB)`). No se recomienda reparticionar en vivo los 3
+nodos bare-metal — ver [`docs/architecture/vm-partition-scheme.md`](../../docs/architecture/vm-partition-scheme.md)
+para el esquema a aplicar en VMs nuevas que CAPN provisione a futuro.
+
+## Recomendaciones — sistema operativo
+
+| Nodo | Distribución | Kernel |
+|---|---|---|
+{% for host in groups['incus_cluster'] %}
+| {{ host }} | {{ hostvars[host].node_report.so_distribucion | default('NA') }} | {{ hostvars[host].node_report.kernel | default('NA') }} |
+{% endfor %}
+
+{% set distros = [] %}
+{% for host in groups['incus_cluster'] %}
+{% set d = hostvars[host].node_report.so_distribucion | default('NA') %}
+{% if d not in distros %}
+{% set _ = distros.append(d) %}
+{% endif %}
+{% endfor %}
+{% if distros | length > 1 %}
+- ⚠️ **Drift de versión entre nodos:** {{ distros | join(' / ') }} — no es una diferencia arquitectónica intencional (x86 vs arm64), es solo que un nodo quedó en otra versión de Debian. Definir una versión objetivo única y planificar alinear los 3, para evitar diferencias sutiles de glibc/systemd entre nodos del mismo clúster.
+{% else %}
+- ✅ Misma versión de Debian en los 3 nodos.
+{% endif %}
+
+Ver la ficha individual de cada nodo ("Recomendaciones de sistema operativo") para el detalle de
+alternativas open source consideradas (Ubuntu Server LTS, Armbian en el nodo ARM, y por qué Talos/Flatcar
+no aplican mientras los 3 nodos sigan haciendo Incus + K3s a la vez).
+
+## Criterio de decisión para el rol de control-plane (hoy: deborah)
+
+1. Menor latencia de escritura (fsync) → mejor candidato para etcd.
+2. Fuente de alimentación estable (NVMe + alimentación dedicada, no USB) → menor riesgo de corrupción.
+3. RAM disponible por encima del uso normal del clúster (2-4 GB de margen es suficiente; no es el factor decisivo).
+4. Temperatura bajo carga sostenida — el throttling térmico de una SBC es el riesgo real a vigilar en deborah.
+
+Completar la sección "Rol actual" de cada ficha individual una vez revisados estos cuatro puntos. Si algún dato contradice el rol asignado en `docs/hardware/inventory.md`, actualizar ese archivo.

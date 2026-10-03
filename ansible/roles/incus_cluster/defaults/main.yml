@@ -1,0 +1,10 @@
+---
+incus_cluster_phase: bootstrap  # bootstrap | join | post (playbook lo sobreescribe)
+incus_cluster_leader: invincible
+incus_storage_driver: dir
+incus_storage_pool: local
+incus_storage_path: /var/lib/incus/storage-pools/local
+incus_storage_min_free_gb: 20
+incus_bridge: br0
+incus_cluster_groups: []
+incus_scheduler_manual: false

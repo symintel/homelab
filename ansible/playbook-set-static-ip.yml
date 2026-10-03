@@ -1,0 +1,19 @@
+---
+# Fija la IP del bridge br0 (docs/networking/index.md) y el DNS/gateway
+# correctos en los 3 nodos del cluster.
+#
+# Requiere por host en inventory.ini:
+#   ansible_host  -> IP ACTUAL de conexion SSH
+#   static_ip     -> IP fija destino en br0
+#   bridge_iface  -> interfaz fisica (invincible=eno2, oliver=eno1, deborah=enP4p65s0)
+#
+# Tras aplicar y reconectar por la IP nueva (si cambia), actualiza ansible_host.
+#
+# Ejecutar (serial=1 evita perder SSH en varios nodos a la vez):
+#   ansible-playbook -i inventory.ini playbook-set-static-ip.yml
+- name: Configurar IP fija, gateway y DNS en br0 (Debian)
+  hosts: incus_cluster
+  serial: 1
+  become: true
+  roles:
+    - role: netplan_bridge
