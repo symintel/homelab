@@ -34,20 +34,16 @@ al terminar la Fase 4 como mínimo; las fases 5 y 6 son opcionales.
 | vClusters | UI [vCluster Platform](fase-5-vcluster.md) |
 | Workload CAPN | `clusterctl get kubeconfig` (Fase 6) |
 
-## `/etc/hosts` en tu estación de trabajo
+## DNS en tu estación de trabajo
 
-Bloque completo tras Fase 4+ (`<IP-del-Gateway>` = IP que MetalLB le da al
-Gateway `homelab`; `incus` siempre apunta a invincible):
+Usa `192.168.20.5` (BIND en `deborah`) como DNS: `*.homelab.local` apunta al Gateway
+(`192.168.23.200`, IP fija) e `incus.homelab.local` a invincible
+([Fase 4 — 4.8](fase-4-gitops.md#48-dns-de-homelablocal)). Si no puedes, el respaldo
+es `/etc/hosts`:
 
 ```
-<IP-del-Gateway>  argocd.homelab.local vcluster.homelab.local
-192.168.20.6      incus.homelab.local
-```
-
-Obtén `<IP-del-Gateway>`:
-
-```bash
-kubectl get gateway homelab -n gateway -o jsonpath='{.status.addresses[0].value}'
+192.168.23.200  argocd.homelab.local vcluster.homelab.local
+192.168.20.6    incus.homelab.local
 ```
 
 Verificación:

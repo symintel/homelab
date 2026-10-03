@@ -82,18 +82,16 @@ Si falla, revisa el Redirect URIs de la OAuth App y el team `symintel/devops` en
 
 Con SSO estable, pon `auth.password.disabled: true` en `platform.yaml`.
 
-### 4. /etc/hosts
+### 4. DNS
+
+`vcluster.homelab.local` y `argocd.homelab.local` los resuelve el DNS de la LAN
+(BIND en `deborah`) hacia la IP fija del Gateway, `192.168.23.200`
+([Fase 4 — 4.8](../implementacion/fase-4-gitops.md#48-dns-de-homelablocal)). Usa
+`192.168.20.5` como DNS; si no puedes, el respaldo es `/etc/hosts`:
 
 ```
-<IP-del-Gateway>  argocd.homelab.local vcluster.homelab.local
-192.168.20.6      incus.homelab.local
-```
-
-`<IP-del-Gateway>` es la IP que MetalLB le da al Gateway `homelab`;
-`incus` apunta siempre a invincible. Obtén la IP del Gateway:
-
-```bash
-kubectl get gateway homelab -n gateway -o jsonpath='{.status.addresses[0].value}'; echo
+192.168.23.200  argocd.homelab.local vcluster.homelab.local
+192.168.20.6    incus.homelab.local
 ```
 
 ## Uso diario

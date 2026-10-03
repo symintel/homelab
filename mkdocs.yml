@@ -1,6 +1,6 @@
 site_name: HomeLab — K3s + Incus + CAPN
 site_description: Documentación de un HomeLab híbrido x86_64 + ARM64 (Incus, K3s, CAPN, ArgoCD)
-site_url: https://symintel.github.io/homelab/
+site_url: https://homelab.symintelligent.com/
 repo_url: https://github.com/symintel/homelab
 repo_name: symintel/homelab
 edit_uri: edit/main/docs/

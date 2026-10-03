@@ -1,63 +1,25 @@
 name: Lint docs y manifiestos (solo en Pull Requests)
-# Corre en el runner arc-runners del HomeLab (no trae herramientas: Python se instala en cada job).
+# La lógica vive en symintel/core-pipelines (workflows reutilizables, corren en arc-runners).
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  lint:
-    runs-on: arc-runners
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Lint Markdown
-        uses: DavidAnson/markdownlint-cli2-action@v24
-        with:
-          globs: 'docs/**/*.md README.md'
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.x'
-
-      - name: Build de prueba de MkDocs (sin publicar)
-        run: |
-          pip install -r requirements.txt
-          mkdocs build --strict --clean
+  docs:
+    # Probando: @main. Cuando todo funcione, crear el tag v1 en core-pipelines y usar:
+    # uses: symintel/core-pipelines/.github/workflows/mkdocs.yml@v1
+    uses: symintel/core-pipelines/.github/workflows/mkdocs.yml@main
+    with:
+      markdownlint-globs: 'docs/**/*.md README.md'
 
   ansible:
-    runs-on: arc-runners
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.x'
-
-      - name: Instalar Ansible y collections
-        run: |
-          pip install ansible ansible-lint
-          ansible-galaxy collection install -r ansible/requirements.yml
-
-      - name: ansible-lint
-        run: ansible-lint ansible/
-
-      - name: Syntax-check playbooks
-        run: |
-          cd ansible
-          for pb in playbook-*.yml; do
-            ansible-playbook --syntax-check -i inventory.ini "$pb"
-          done
+    # uses: symintel/core-pipelines/.github/workflows/ansible.yml@v1
+    uses: symintel/core-pipelines/.github/workflows/ansible.yml@main
+    with:
+      directory: ansible
 
   opentofu:
-    runs-on: arc-runners
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: opentofu/setup-opentofu@v2
-
-      - name: tofu fmt -check y validate
-        run: |
-          cd opentofu
-          tofu fmt -check -recursive
-          tofu init -backend=false
-          tofu validate
+    # uses: symintel/core-pipelines/.github/workflows/tofu-validate.yml@v1
+    uses: symintel/core-pipelines/.github/workflows/tofu-validate.yml@main
+    with:
+      working-directory: opentofu

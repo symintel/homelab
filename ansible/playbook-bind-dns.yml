@@ -1,12 +1,15 @@
 ---
 # Instala BIND en deborah dentro de un chroot, lo configura para escuchar en
-# su IP de la LAN y sirve las zonas mco.local (directa y reversa) generadas
-# desde el inventario.
+# su IP de la LAN y sirve tres zonas, generadas desde el inventario y group_vars:
+#   - mco.local                  nombres de los hosts (un A por nodo, ns, k3s)
+#   - 20.168.192.in-addr.arpa    reversa de esa red (PTR)
+#   - homelab.local              servicios publicados: incus, y argocd, vcluster y
+#                                el comodín * hacia el Gateway (gateway_ip)
 #
 # Ejecutar:
 #   ansible-playbook -i inventory.ini playbook-bind-dns.yml
 
-- name: Instalar y configurar BIND (mco.local)
+- name: Instalar y configurar BIND (mco.local, homelab.local)
   hosts: deborah
   become: true
   roles:

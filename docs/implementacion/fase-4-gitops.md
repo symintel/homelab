@@ -439,15 +439,37 @@ sequenceDiagram
 
 ---
 
-## 4.8 — /etc/hosts
+## 4.8 — DNS de `*.homelab.local`
+
+Los nombres los resuelve el DNS de la LAN (BIND en `deborah`,
+[`playbook-bind-dns.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-bind-dns.yml)).
+La zona `homelab.local` trae:
+
+| Registro | Apunta a |
+|---|---|
+| `incus.homelab.local` | invincible (`192.168.20.6`) |
+| `argocd.homelab.local`, `vcluster.homelab.local` | el Gateway: `gateway_ip` = `192.168.23.200` (primera IP del pool de MetalLB) |
+| `*.homelab.local` (comodín) | el Gateway: los `HTTPRoute` nuevos funcionan sin tocar el DNS |
+
+La IP del Gateway es **fija**: los Service de `kong`, `traefik` y `nginx-gateway`
+la piden con una anotación de MetalLB, y la misma variable `gateway_ip`
+(`ansible/group_vars/all.yml`) alimenta el DNS. Si la cambias, cámbiala en los dos
+lados. Aplica el DNS (desde `ansible/` en `homelab`):
+
+```bash
+ansible-playbook -i inventory.ini playbook-bind-dns.yml
+dig @192.168.20.5 argocd.homelab.local +short   # 192.168.23.200
+```
+
+Tu estación tiene que usar `192.168.20.5` como DNS. Si no puedes, el respaldo es
+`/etc/hosts`:
 
 ```
-<IP-del-Gateway>  argocd.homelab.local vcluster.homelab.local
-192.168.20.6      incus.homelab.local
+192.168.23.200  argocd.homelab.local vcluster.homelab.local
+192.168.20.6    incus.homelab.local
 ```
 
-`<IP-del-Gateway>` es la IP que MetalLB le da al Gateway `homelab`;
-`incus` apunta siempre a invincible. Obtén la IP del Gateway:
+Comprueba que el Gateway tiene esa IP:
 
 ```bash
 kubectl get gateway homelab -n gateway -o jsonpath='{.status.addresses[0].value}'; echo
