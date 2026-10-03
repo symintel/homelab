@@ -4,7 +4,7 @@ Los runners de ARC (Actions Runner Controller) son pods efímeros: cada job arra
 vacío. Sin caché, cada job vuelve a bajar Python o Node, los paquetes pip/npm, los
 charts de Helm, los providers de OpenTofu y las herramientas del pipeline de `gitops`.
 Para evitarlo, los runners montan un volumen compartido en `/cache` que sobrevive
-entre jobs.
+entre jobs, excepto el *tool cache* de `setup-python`/`setup-node` (ver abajo).
 
 ## Cómo está armado
 
@@ -18,14 +18,22 @@ Qué se guarda y dónde:
 
 | Carpeta | Contenido | Variable |
 |---|---|---|
-| `/cache/tool` | Python, Node y OpenTofu que instalan los `setup-*` (carpetas por `x64`/`arm64`) | `RUNNER_TOOL_CACHE`, `AGENT_TOOLSDIRECTORY` |
 | `/cache/pip`, `/cache/npm` | Paquetes descargados | `PIP_CACHE_DIR`, `npm_config_cache` |
 | `/cache/helm`, `/cache/xdg` | Índices y charts de Helm, cachés genéricas | `HELM_CACHE_HOME`, `XDG_CACHE_HOME` |
 | `/cache/tofu-plugins` | Providers de OpenTofu (por sistema y arquitectura) | `TF_PLUGIN_CACHE_DIR` |
 | `/cache/dl` | Tarballs de helm, kustomize, kubeconform, gitleaks y argocd del pipeline de `gitops` | `RUNNER_CACHE` |
 
+!!! warning "El tool cache de `setup-python` y `setup-node` NO se comparte"
+    `setup-python` borra y reinstala la carpeta de la versión que va a usar. Con el tool
+    cache en el volumen compartido, dos jobs en paralelo (por ejemplo `render` y
+    `security` de `gitops`) se pisaban la misma carpeta y fallaban con `rm: cannot
+    remove … Stale file handle`. Por eso `RUNNER_TOOL_CACHE` queda en el valor por
+    defecto (`_work/_tool`, local a cada runner) y Python/Node se descargan en cada job
+    (~20 s). Lo que sí se comparte es seguro en paralelo: pip, npm, Helm y los tarballs
+    de `/cache/dl` (se escriben a un archivo temporal y se renombran).
+
 El clúster mezcla nodos `amd64` y `arm64` (`deborah`): por eso lo que depende de la
-arquitectura va en carpetas separadas por ella (tool cache, providers, nombres de
+arquitectura va en carpetas separadas por ella (providers de OpenTofu y nombres de
 tarball) y es seguro compartirlo.
 
 ## Cómo se verifica lo que se reutiliza
@@ -52,9 +60,9 @@ cache, pip, npm) no se puede verificar así.
     kubectl -n arc-runners get cronjob arc-cache-prune
     ```
 
-2. Corre dos veces seguidas el mismo workflow. En el segundo, el paso de Python
-   dice `Found in cache @ /cache/tool/Python/...` y el de herramientas de `gitops`
-   no descarga tarballs (tarda segundos).
+2. Corre dos veces seguidas el mismo workflow. En el segundo, `pip install` dice
+   `Using cached …` y el paso de herramientas de `gitops` no descarga tarballs
+   (tarda segundos).
 3. Mira cuánto ocupa (con un pod temporal, el runner ya no existe al terminar el job):
 
     ```bash
@@ -79,6 +87,6 @@ Hazlo si sospechas de una caché alterada o corrupta.
 |---|---|
 | Los runners no arrancan (`Pending`) | `kubectl -n arc-runners describe pvc arc-cache`: Longhorn debe estar `Healthy` y los nodos tener `nfs-common` (rol `k3s_prereqs`) |
 | El job dice `Permission denied` en `/cache` | El `initContainer cache-perms` no pudo hacer `chown` (NFS con squash de root): `kubectl -n arc-runners logs <pod> -c cache-perms` |
-| `setup-python` sigue descargando | Mira la variable en el log del paso: `RUNNER_TOOL_CACHE` debe ser `/cache/tool`; si no, el runner no la toma y hay que montar el volumen en `/home/runner/_work/_tool` |
+| `rm: cannot remove … Stale file handle` en `/cache/…` | Dos jobs escribiendo la misma carpeta del volumen: no compartas ahí cachés que se borran y reinstalan (como el tool cache); si hay datos corruptos, vacía esa carpeta |
 | `Checksum incorrecto` en el pipeline de `gitops` | Una descarga corrupta o una caché alterada: vacía `/cache/dl` y reintenta |
-| El volumen se llena | `df -h /cache` desde el pod temporal; sube el tamaño del PVC (Longhorn permite expandir) o vacía `/cache/tool` |
+| El volumen se llena | `df -h /cache` desde el pod temporal; sube el tamaño del PVC (Longhorn permite expandir) o vacía `/cache/xdg` o `/cache/pip` |

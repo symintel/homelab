@@ -1,5 +1,6 @@
 name: Build y desplegar documentación (MkDocs -> GitHub Pages)
-# La lógica vive en symintel/core-pipelines (workflow reutilizable, corre en arc-runners).
+# Corre en el runner arc-runners del HomeLab. El equivalente reutilizable está en
+# symintel/core-pipelines (mkdocs.yml), pero un repo público no puede llamar a uno privado.
 
 on:
   push:
@@ -11,7 +12,6 @@ on:
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
-# El workflow reutilizable no puede pedir más permisos de los que da el caller.
 permissions:
   contents: read
   pages: write
@@ -22,9 +22,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  docs:
-    # Probando: @main. Cuando todo funcione, crear el tag v1 en core-pipelines y usar:
-    # uses: symintel/core-pipelines/.github/workflows/mkdocs.yml@v1
-    uses: symintel/core-pipelines/.github/workflows/mkdocs.yml@main
-    with:
-      deploy: true
+  build:
+    runs-on: arc-runners
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Build del sitio
+        run: mkdocs build --strict --clean
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v6
+
+      - name: Subir artefacto del sitio
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: arc-runners
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Desplegar a GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
