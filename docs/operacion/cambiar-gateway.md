@@ -29,6 +29,15 @@ anotaciones cambian de uno a otro, los `HTTPRoute` no.
   `argocd-server` corre con `server.insecure` (en `argocd/config`) y el
   `HTTPRoute` apunta a su puerto 80. El diff del pipeline de `gitops` usa
   `--plaintext` por el mismo motivo.
+- **Kong es la excepción.** KIC 3.5 con Kong 3.9 rechaza (`value must be null`) el
+  certificado que arma para un listener de Gateway API, y Kong no llega a estar
+  `Ready`. Por eso el Gateway de Kong no usa `certificateRefs`: cert-manager emite
+  `kong-default-tls` (`gateway/kong/certificate.yaml`), el chart lo monta en el pod y
+  Kong lo carga como certificado por defecto con `KONG_SSL_CERT` y `KONG_SSL_CERT_KEY`.
+  Kong lo lee solo al arrancar: **tras cada renovación (cada ~60 días) reinicia el
+  pod**: `kubectl -n kong rollout restart deploy/kong-gateway`. Traefik y NGINX Gateway
+  Fabric usan el certificado que cert-manager crea a partir del Gateway (`homelab-tls`)
+  y se actualizan solos.
 - Para que el navegador confíe en la CA, importa su certificado raíz:
 
     ```bash
@@ -89,5 +98,6 @@ Gateway esté `Programmed`, entra a ArgoCD con
 | Dos controladores activos | Comenta uno: se pelean por las IP de MetalLB |
 | El Gateway no tiene certificado (`homelab-tls` no existe) | `kubectl describe certificate -n gateway`; `cert-manager-config` debe estar `Healthy` |
 | `HTTPRoute` sin `Accepted` | `kubectl describe httproute -n argocd argocd-server`: `parentRefs` debe apuntar a `homelab` en `gateway` |
+| Con Kong, los pods no llegan a `Ready` y el log del controlador dice `failed posting new config to /config` | Ver el punto de Kong en *Cómo funciona el TLS*; confirma que existe el Secret `kong-default-tls` (`kubectl -n kong get certificate,secret`) |
 | Con Kong, el listener queda sin programar | KIC enlaza el Gateway con los puertos del Kong del chart; revisa `kubectl describe gateway` y los puertos del Service `kong-gateway-proxy` |
 | ArgoCD responde `too many redirects` o error de protocolo | `server.insecure` no se aplicó: `kubectl -n argocd get cm argocd-cmd-params-cm -o yaml` |
