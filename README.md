@@ -11,7 +11,7 @@ de GitHub Pages generado por MkDocs.
 ## Hardware
 
 | Nodo | Modelo | CPU | RAM (medida) | IP | Rol |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | `invincible` | Lenovo ThinkCentre M920q | x86_64 i3-6100T | 7.6 GB | 192.168.20.6 | Incus leader / K3s worker |
 | `oliver` | Lenovo ThinkCentre M700 | x86_64 i7-8700T | 15.5 GB | 192.168.20.7 | Incus (quorum) / K3s worker |
 | `deborah` | Orange Pi 5 Plus | ARM64 RK3588 | 31 GB | 192.168.20.5 | K3s control-plane |
