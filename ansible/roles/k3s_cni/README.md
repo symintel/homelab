@@ -17,15 +17,15 @@ Instala el **CNI externo** tras el server K3s cuando `k3s_install.core.cni` no e
 |---|---|---|
 | `k3s_install.core.cni` | `flannel` | `flannel`, `canal`, `calico`, `cilium` |
 | `k3s_install.core.cluster_cidr` | `10.42.0.0/16` | Pool Calico en template |
-| `k3s_cni_calico_version` | `v3.29.1` | Manifests Calico/Canal |
-| `k3s_cni_cilium_version` | `v1.16.5` | Manifest Cilium quick-install |
+| `k3s_cni_calico_version` | `v3.33.0` | Manifests Calico/Canal |
+| `k3s_cni_cilium_version` | `v1.20.2` | Versión del chart de Cilium |
 
 ## Qué hace
 
 1. Salta si `cni == flannel` (Flannel embebido en K3s).
 2. **Canal**: manifest oficial Calico/Canal.
 3. **Calico**: Tigera operator + `custom-resources` con pod CIDR.
-4. **Cilium**: quick-install manifest.
+4. **Cilium**: `HelmChart` del helm-controller de K3s (chart oficial `cilium` de `helm.cilium.io`; el `quick-install.yaml` ya no se publica).
 5. Espera pods Ready en `kube-system`.
 
 Alternativa GitOps: Applications `calico-operator`, `calico-config`, `canal`, `cilium`

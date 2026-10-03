@@ -105,7 +105,7 @@ IPs fijas y reservadas de la LAN:
 |---|---|---|
 | deborah, invincible, oliver | `192.168.20.5`, `.6`, `.7` | `static_ip` en `inventory.ini` |
 | VIP del API de K3s (kube-vip, opcional) | `192.168.20.4` | `kube_vip.address` en `k3s_install.yml` |
-| Pool de MetalLB (`LoadBalancer`, Ingress) | `192.168.23.200–192.168.23.220` | [`gitops/metallb/ipaddresspool.yaml`](https://github.com/symintel/gitops/blob/main/metallb/ipaddresspool.yaml) |
+| Pool de MetalLB (`LoadBalancer`, Gateway) | `192.168.23.200–192.168.23.220` | [`gitops/metallb/ipaddresspool.yaml`](https://github.com/symintel/gitops/blob/main/metallb/ipaddresspool.yaml) |
 
 !!! warning "Fuera del DHCP"
     Como el DHCP del router reparte en toda la `/22`, estas IPs y el pool de

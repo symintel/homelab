@@ -68,6 +68,7 @@ export ONEPASSWORD_ACCOUNT_NAME="Mi Cuenta"  # tu cuenta
 | `symintel-terraform` | Nota segura | `app_id`, `installation_id`, `private_key` | Runner de OpenTofu (`TF_VAR_github_app_*`) |
 | `symintel-arc-runners` | Nota segura | `app_id`, `installation_id`, `private_key` | ARC (registro del runner) |
 | `symintel-argocd` | Nota segura | `app_id`, `installation_id`, `private_key` | ArgoCD lee `symintel/gitops` (`argocd/repo-gitops`) |
+| `sealed-secrets` | Nota segura | `certificate`, `private_key` *(opcional hasta la Fase 6)* | Llave de cifrado de Sealed Secrets: sobrevive si reinstalas K3s |
 | `symintel-dex` | Nota segura | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (+ `INCUS_CLIENT_SECRET`, `VCLUSTER_CLIENT_SECRET`, que genera el playbook) | Dex (login con GitHub) |
 | `ftp-<repo>` | Nota segura | `dev_host`, `dev_user`, `dev_password`, `dev_remote_dir`, `prod_host`, `prod_user`, `prod_password`, `prod_remote_dir` | OpenTofu → secrets FTP de `<repo>` (`TF_VAR_ftp`) |
 
@@ -297,6 +298,45 @@ como admin de ArgoCD. Se aplica en el
     | `prod_password` | Contraseña | |
     | `prod_remote_dir` | Texto | `/home/usuario/public_html` |
 
+4. **Llave de Sealed Secrets** *(opcional: hace falta cuando empieces a
+   guardar `SealedSecret` en git, p. ej. en la Fase 6)*. Sealed Secrets
+   cifra los secretos con un par de llaves que, por defecto, el controlador
+   genera dentro del clúster: si reinstalas K3s se pierde, y los
+   `SealedSecret` que ya estaban en git dejan de poder descifrarse. Por eso
+   se genera **una sola vez**, se guarda en 1Password, y el playbook de
+   secretos la lleva al clúster antes de que el controlador arranque.
+
+    Genera el par en una carpeta temporal (`openssl` viene en macOS y Linux):
+
+    ```bash
+    cd "$(mktemp -d)"
+    openssl req -x509 -days 3650 -nodes -newkey rsa:4096 \
+      -keyout tls.key -out tls.crt -subj "/CN=sealed-secret/O=sealed-secret"
+    ```
+
+    Crea en 1Password el item **`sealed-secrets`** (Nota segura,
+    [creado igual que los otros](#como-crear-un-item-con-campos-propios)):
+
+    | Campo | Tipo | Valor |
+    |---|---|---|
+    | `certificate` | Texto | El contenido completo de `tls.crt` (la llave **pública**), con las líneas `-----BEGIN CERTIFICATE-----` y `-----END CERTIFICATE-----` |
+    | `private_key` | Contraseña | El contenido completo de `tls.key` (la llave **privada**), con sus líneas `BEGIN`/`END` |
+
+    Para copiar un archivo: `pbcopy < tls.crt` (macOS) o ábrelo con un editor
+    y copia todo. Cuando el item esté guardado, **borra los archivos**:
+
+    ```bash
+    rm -f tls.key tls.crt
+    ```
+
+    El certificado vale 10 años. El playbook comprueba que el certificado y
+    la llave sean un par (si copiaste archivos de pares distintos, se
+    detiene con un mensaje claro) y crea el Secret
+    `kube-system/sealed-secrets-key-homelab`, que el controlador detecta por su
+    etiqueta `sealedsecrets.bitnami.com/sealed-secrets-key: active`. Mientras
+    el item no exista, el playbook avisa y sigue: Sealed Secrets generaría su
+    propia llave.
+
 ## Paso 3 — Clúster y secretos de plataforma
 
 Con k3s instalado ([Fase 3](../implementacion/fase-3-k3s.md), ArgoCD incluido):
@@ -317,6 +357,7 @@ crea los namespaces `argocd`, `arc-runners` (PSS `baseline`) y `terraform`
 | `arc-runners-github-app` | `arc-runners` | App de ARC |
 | `symintel-terraform-app` | `arc-runners` | `TF_VAR_github_app_id`, `TF_VAR_github_app_installation_id`, `TF_VAR_github_app_private_key` |
 | `tofu-vars` | `arc-runners` | `TF_VAR_ftp` (todos los items `ftp-<repo>`) |
+| `sealed-secrets-key-homelab` | `kube-system` | Par de llaves de Sealed Secrets (item `sealed-secrets`, si existe) |
 
 !!! note "Un solo runner"
     Es un HomeLab: el único scale set (`arc-runners`, grupo Default) corre CI (integración continua),

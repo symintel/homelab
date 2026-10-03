@@ -28,7 +28,7 @@ ansible-playbook -i inventory.ini playbook-k3s.yml --tags argocd
 | Variable | Default | Descripción |
 |---|---|---|
 | `k3s_install.gitops_argocd.enabled` | `false` | Activa el rol |
-| `k3s_install.gitops_argocd.version` | `v2.14.2` | Tag del manifest upstream |
+| `k3s_install.gitops_argocd.version` | `latest` | `latest` = última versión estable (rama `stable` del repo oficial); o un tag fijo, p. ej. `v3.5.3` |
 | `k3s_install.gitops_argocd.gitops_repo_url` | gitops | URL informativa en mensaje final |
 
 ## Qué hace

@@ -74,7 +74,7 @@ Opciones bootstrap (kube-vip, ArgoCD controller, labels, …):
 ## 2. Instalación del control-plane (deborah)
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.2+k3s1 \
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.5+k3s1 \
   INSTALL_K3S_EXEC="server \
   --disable traefik \
   --disable servicelb \
@@ -85,7 +85,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.2+k3s1 \
 ```
 
 - `--disable traefik/servicelb`: se instalan controladamente más adelante
-  (o se sustituyen por Ingress-Nginx + MetalLB) para no perder control
+  (o se sustituyen por un controlador de Gateway API + MetalLB) para no perder control
   sobre versiones.
 - `--write-kubeconfig-mode 600`: kubeconfig legible solo por root (endurecido
   vs 644).
@@ -105,7 +105,7 @@ Automatizable con: `ansible-playbook -i inventory.ini playbook-k3s.yml --limit k
 **invincible (7.6 GB — también corre CAPN como management cluster):**
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.2+k3s1 \
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.5+k3s1 \
   K3S_URL=https://192.168.20.5:6443 \
   K3S_TOKEN=<TOKEN> \
   INSTALL_K3S_EXEC="agent --node-ip 192.168.20.6" sh -
@@ -115,7 +115,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.2+k3s1 \
 manual` en Incus):**
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.2+k3s1 \
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.5+k3s1 \
   K3S_URL=https://192.168.20.5:6443 \
   K3S_TOKEN=<TOKEN> \
   INSTALL_K3S_EXEC="agent --node-ip 192.168.20.7 --kubelet-arg=max-pods=110" sh -
@@ -213,7 +213,7 @@ miembros del clúster Incus puede romper el quorum.
 
 ## 7. Checklist post-instalación
 
-- [x] K3s v1.36.2+k3s1 instalado (medido 2026-07-10)
+- [x] K3s v1.36.5+k3s1 instalado (canal stable)
 - [x] Workers invincible/oliver unidos al API en `192.168.20.5:6443`
 - [x] Módulos overlay/br_netfilter cargados en workers
 - [x] ArgoCD desplegado (application-controller en invincible)

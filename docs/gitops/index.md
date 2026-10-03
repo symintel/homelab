@@ -20,7 +20,7 @@ Documentación relacionada:
 | Repo | Qué instala | Herramienta |
 |---|---|---|
 | [`homelab`](https://github.com/symintel/homelab) | K3s binario, kube-vip CP, controller ArgoCD, red SO | [Ansible](https://docs.ansible.com/) |
-| [`gitops`](https://github.com/symintel/gitops) | MetalLB, Ingress, storage, vCluster, CAPN, … | [Argo CD](https://argo-cd.readthedocs.io/) |
+| [`gitops`](https://github.com/symintel/gitops) | MetalLB, Gateway API, storage, vCluster, CAPN, … | [Argo CD](https://argo-cd.readthedocs.io/) |
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,7 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 
 | Manifiesto | Sync | Para qué sirve |
 |---|---|---|
-| [`bootstrap/root-appset.yaml`](https://github.com/symintel/gitops/blob/main/bootstrap/root-appset.yaml) | Una vez, a mano | **ApplicationSet**: genera la Application raíz `homelab-root` con las apps descomentadas de su lista, desplegadas por olas. Es el único `kubectl apply` GitOps tras tener el controller. |
+| [`bootstrap/root-appset.yaml`](https://github.com/symintel/gitops/blob/main/bootstrap/root-appset.yaml) | Una vez, a mano | **ApplicationSet**: genera la Application raíz `homelab-root` con las apps descomentadas de su lista, desplegadas por olas. Es el único `kubectl apply` GitOps tras tener el controller; ArgoCD no lo gestiona, así que se vuelve a aplicar con `kubectl apply -f` cada vez que cambia la lista. |
 
 ### Wave 0 — Fundamentos (storage + LB controller)
 
@@ -51,21 +51,24 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 | **`openebs`** | [OpenEBS](https://openebs.io/docs) | Storage local por nodo (LocalPV). |
 | **`homelab-storage`** | — | StorageClasses `openebs-hostpath` (default) y `longhorn-mixto`. |
 | **`metallb`** | [MetalLB](https://metallb.universe.tf/) | Controller LoadBalancer en LAN. **No** es kube-vip. |
+| **`gateway-api`** | [Gateway API](https://gateway-api.sigs.k8s.io/) | CRDs `Gateway`, `HTTPRoute`, etc. (canal standard). |
+| **`cert-manager`** | [cert-manager](https://cert-manager.io/docs/) | Emisión de certificados TLS. |
 
 ### Wave 1 — Red de servicios + storage HA
 
 | Application | Producto | Para qué sirve |
 |---|---|---|
 | **`metallb-config`** | [MetalLB](https://metallb.universe.tf/) | Pool L2 `192.168.23.200–192.168.23.220` (reservado fuera del DHCP del router). |
-| **`ingress-nginx`** | [Ingress NGINX](https://kubernetes.github.io/ingress-nginx/) | Ingress HTTP(S) del clúster. |
+| **`cert-manager-config`** | [cert-manager](https://cert-manager.io/docs/) | CA propia del HomeLab (`ClusterIssuer homelab-ca`). |
+| **`kong`** (o `traefik`, `nginx-gateway`) | [Kong Ingress Controller](https://developer.konghq.com/kubernetes-ingress-controller/) | Controlador de [Gateway API](https://gateway-api.sigs.k8s.io/) y `Gateway homelab` (HTTP/HTTPS, `*.homelab.local`). Se activa solo uno; ver [Cambiar el controlador de Gateway](../operacion/cambiar-gateway.md). |
 | **`longhorn`** | [Longhorn](https://longhorn.io/docs/) | Storage replicado cross-arch. |
 
 ### Wave 2 — ArgoCD accesible + Dex
 
 | Application / carpeta | Producto | Para qué sirve |
 |---|---|---|
-| **`argocd-ingress`** | [Ingress NGINX](https://kubernetes.github.io/ingress-nginx/) | UI en `https://argocd.homelab.local`. |
-| **`argocd/config/`** (`argocd-config`) | [Dex](https://dexidp.io/docs/) | Connector GitHub + staticClients vCluster e Incus UI. |
+| **`argocd-route`** | [Gateway API](https://gateway-api.sigs.k8s.io/) | `HTTPRoute`: UI en `https://argocd.homelab.local`. |
+| **`argocd/config/`** (`argocd`) | [Dex](https://dexidp.io/docs/) | Connector GitHub + staticClients vCluster e Incus UI. |
 | [`argocd/secrets/`](https://github.com/symintel/gitops/tree/main/argocd/secrets) | [1Password SDK](https://github.com/1Password/onepassword-sdk-python) | OAuth desde app local |
 
 ### Wave 3 — Operaciones
@@ -118,7 +121,8 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 | Síntoma | Revisar |
 |---|---|
 | Application `Degraded` | `kubectl describe application -n argocd <nombre>` |
-| Ingress sin EXTERNAL-IP | `metallb-config` sync, pool libre en LAN |
+| `arc-runners` `OutOfSync` y el pod del listener se reinicia cada pocos minutos | ArgoCD poda en bucle los recursos que crea el controlador de ARC (`AutoscalingListener`, `Role`, `RoleBinding`: copian la etiqueta `app.kubernetes.io/instance`). Se corrige con `application.resourceTrackingMethod: annotation` en `argocd-cm` (ya está en `gitops/argocd/config`). Comprueba: `kubectl -n argocd get cm argocd-cm -o jsonpath='{.data.application\.resourceTrackingMethod}'` → `annotation`; si no, sincroniza `argocd` y reinicia el controlador: `kubectl -n argocd rollout restart statefulset argocd-application-controller` |
+| Gateway sin dirección | `metallb-config` sync, pool libre en LAN |
 | SSO vCluster falla | `playbook-dex-oauth-secrets.yml --tags ensure,argocd,vcluster`; restart Dex |
 | Incus UI SSO falla | `INCUS_CLIENT_SECRET` en `argocd-secret`; `incus config set oidc.*`; restart Dex |
 | Dex login sin GitHub | Secretos GitHub en `argocd-secret`; Redirect URIs de la OAuth App correcto |

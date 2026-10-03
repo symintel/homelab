@@ -68,7 +68,7 @@ si la IP de conexión cambió.
 
 **Estado:** el API (Application Programming Interface) server responde en `192.168.20.5:6443` (deborah).
 Workers en invincible (`192.168.20.6`) y oliver (`192.168.20.7`). Se instala con
-**K3s v1.36.2+k3s1** (`k3s_install.core.version`); después el SUC (System Upgrade Controller) lo actualiza solo
+**K3s v1.36.5+k3s1** (`k3s_install.core.version`); después el SUC (System Upgrade Controller) lo actualiza solo
 ([Actualizar K3s](../operacion/actualizar-k3s.md)). Versión real: `kubectl get nodes`.
 
 <div class="card">

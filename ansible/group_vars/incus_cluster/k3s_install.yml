@@ -2,7 +2,10 @@
 # Opciones del playbook K3s (bootstrap). Ver docs/k3s/playbook-options.md
 k3s_install:
   core:
-    version: "v1.36.2+k3s1"
+    # Canal "stable" de K3s (https://update.k3s.io/v1-release/channels/stable). El SUC
+    # (gitops/k3s-upgrade) sigue ese canal: al agregar un nodo, usar la versión que
+    # muestra `kubectl get nodes`.
+    version: "v1.36.5+k3s1"
     disable_components:
       - traefik
       - servicelb
@@ -19,11 +22,13 @@ k3s_install:
     address: "192.168.20.4"
     interface: br0
     mode: arp
-    image_version: v0.8.7
+    image_version: v1.2.4
 
   gitops_argocd:
     enabled: true
-    version: v2.14.2
+    # latest = la última versión estable (el rol la resuelve al correr). Después, ArgoCD se
+    # actualiza solo: la Application "argocd" de gitops sigue el tag stable del repo oficial.
+    version: latest
     gitops_repo_url: https://github.com/symintel/gitops
 
   node_labels:

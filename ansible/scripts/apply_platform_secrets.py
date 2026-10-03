@@ -9,6 +9,7 @@ GitOps, y que no pueden vivir en git:
   arc-runners/symintel-terraform-app       App de OpenTofu, como TF_VAR_github_app_*
   arc-runners/tofu-vars                    TF_VAR_ftp (credenciales FTP por repo)
   arc-runners/argocd-ci                    ARGOCD_AUTH_TOKEN (opcional: diff del pipeline de gitops)
+  kube-system/sealed-secrets-key-homelab   llave de Sealed Secrets (opcional, ver abajo)
   namespace terraform                      state de OpenTofu (lo escribe el runner)
 
 El único scale set (arc-runners, desplegado por ArgoCD desde symintel/gitops)
@@ -18,6 +19,7 @@ Items esperados en la bóveda (ONEPASSWORD_VAULT, default HomeLab); ver
 docs/symintel/github.md:
 
   symintel-argocd       app_id, installation_id, private_key
+  sealed-secrets        (opcional) certificate, private_key: el par de Sealed Secrets
   symintel-arc-runners  app_id, installation_id, private_key
   symintel-terraform    app_id, installation_id, private_key
   ftp-<repo>            (uno por repo con deploy) dev_host, dev_user,
@@ -52,6 +54,14 @@ FTP_ITEM_PREFIX = "ftp-"
 # Token de la cuenta "ci" de ArgoCD (solo lectura). Opcional: se genera recién
 # cuando ArgoCD funciona; mientras no exista el item, el Secret no se crea.
 ARGOCD_CI_ITEM = "argocd-ci"
+# Par de llaves de Sealed Secrets, generado por el operador (docs/symintel/github.md).
+# El controlador usa un Secret tls de kube-system con la etiqueta "active" en vez de
+# generar su propia llave: así los SealedSecret de git sobreviven a reinstalar K3s.
+# Opcional: hasta la Fase 6 (CAPN) nada lo necesita.
+SEALED_ITEM = "sealed-secrets"
+SEALED_NAMESPACE = "kube-system"
+SEALED_SECRET_NAME = "sealed-secrets-key-homelab"
+SEALED_LABEL = "sealedsecrets.bitnami.com/sealed-secrets-key"
 FTP_FIELDS = ("host", "user", "password", "remote_dir")
 
 
@@ -77,12 +87,12 @@ def namespace(name: str, *, baseline: bool = False) -> dict:
     return {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": name, "labels": labels}}
 
 
-def secret(ns: str, name: str, data: dict[str, str], labels: dict[str, str] | None = None) -> dict:
+def secret(ns: str, name: str, data: dict[str, str], labels: dict[str, str] | None = None, type_: str = "Opaque") -> dict:
     return {
         "apiVersion": "v1",
         "kind": "Secret",
         "metadata": {"name": name, "namespace": ns, "labels": labels or {}},
-        "type": "Opaque",
+        "type": type_,
         "stringData": data,
     }
 
@@ -96,6 +106,27 @@ def check_pem(pem: str, ref: str) -> str:
     except Exception as exc:  # noqa: BLE001 — error con contexto
         raise RuntimeError(f"{ref}: no es una private key PEM válida (empieza con {pem.splitlines()[0]!r}): {exc}") from exc
     return pem
+
+
+def check_sealed_pair(cert_pem: str, key_pem: str) -> None:
+    """El certificado tiene que ser X.509 y corresponder a la llave privada."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+
+    try:
+        cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"op://{VAULT_NAME}/{SEALED_ITEM}/certificate: no es un certificado X.509 PEM válido: {exc}") from exc
+    try:
+        key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"op://{VAULT_NAME}/{SEALED_ITEM}/private_key: no es una llave privada PEM válida: {exc}") from exc
+    fmt = (serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    if cert.public_key().public_bytes(*fmt) != key.public_key().public_bytes(*fmt):
+        raise RuntimeError(
+            f"op://{VAULT_NAME}/{SEALED_ITEM}: el certificado y la llave privada NO son un par "
+            "(la llave no corresponde a ese certificado). Revisa que copiaste tls.crt y tls.key del mismo par."
+        )
 
 
 async def read_optional(client, ref: str) -> str:
@@ -187,6 +218,25 @@ async def build_manifests() -> list[dict]:
         manifests.append(secret(RUNNER_NAMESPACE, "argocd-ci", {"ARGOCD_AUTH_TOKEN": token.strip()}))
     else:
         print(f"Aviso: sin item {ARGOCD_CI_ITEM!r} en 1Password: el pipeline de gitops omitirá el diff de ArgoCD.", file=sys.stderr)
+
+    sealed_cert = await read_optional(client, f"op://{VAULT_NAME}/{SEALED_ITEM}/certificate")
+    sealed_key = await read_optional(client, f"op://{VAULT_NAME}/{SEALED_ITEM}/private_key")
+    if sealed_cert and sealed_key:
+        cert_pem, key_pem = normalize_pem(sealed_cert), normalize_pem(sealed_key)
+        check_sealed_pair(cert_pem, key_pem)
+        manifests.append(
+            secret(
+                SEALED_NAMESPACE,
+                SEALED_SECRET_NAME,
+                {"tls.crt": cert_pem, "tls.key": key_pem},
+                labels={SEALED_LABEL: "active"},
+                type_="kubernetes.io/tls",
+            )
+        )
+    elif sealed_cert or sealed_key:
+        raise RuntimeError(f"El item {SEALED_ITEM!r} tiene solo uno de los campos: hacen falta 'certificate' y 'private_key'.")
+    else:
+        print(f"Aviso: sin item {SEALED_ITEM!r} en 1Password: Sealed Secrets generará su propia llave (se pierde si reinstalas K3s).", file=sys.stderr)
     return manifests
 
 
@@ -251,6 +301,24 @@ async def check() -> int:
         ok = ok and has
     else:
         print(f"  · sin item {ARGOCD_CI_ITEM} (opcional: el pipeline de gitops omite el diff de ArgoCD)")
+    # Opcional: el par de llaves de Sealed Secrets.
+    if SEALED_ITEM in by_title:
+        item = await client.items.get(vault_id, by_title[SEALED_ITEM].id)
+        found = {f.title: f.value for f in item.fields}
+        print(f"  {SEALED_ITEM}  (opcional)")
+        for name in ("certificate", "private_key"):
+            good = bool(found.get(name))
+            print(f"    {'✓' if good else '✗'} {name}")
+            ok = ok and good
+        if found.get("certificate") and found.get("private_key"):
+            try:
+                check_sealed_pair(normalize_pem(found["certificate"]), normalize_pem(found["private_key"]))
+                print("    ✓ el certificado corresponde a la llave privada")
+            except RuntimeError as exc:
+                print(f"    ✗ {exc}")
+                ok = False
+    else:
+        print(f"  · sin item {SEALED_ITEM} (opcional: Sealed Secrets generará su propia llave)")
     return 0 if ok else 1
 
 

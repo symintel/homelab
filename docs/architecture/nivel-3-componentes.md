@@ -9,7 +9,7 @@ Volver a [Overview (Nivel 1–2)](overview.md).
 ## 3.1 — K3s Management
 
 Desglose del clúster bare-metal de control: GitOps (Argo CD), identidad (Dex),
-provisioning CAPI/CAPN, red de servicios (MetalLB, Ingress), operadores de
+provisioning CAPI/CAPN, red de servicios (MetalLB, Gateway), operadores de
 storage (OpenEBS, Longhorn), secretos (Sealed Secrets), upgrades (SUC) y
 vCluster Platform opcional.
 
@@ -35,7 +35,7 @@ flowchart LR
             direction TB
             sealed["<span style='color:#000'><b>Sealed Secrets</b><br/><small>[Component: controller]</small><br/>Descifra SealedSecret</span>"]
             metallb["<span style='color:#000'><b>MetalLB</b><br/><small>[Component: controller]</small><br/>LoadBalancer L2 en LAN</span>"]
-            ingress["<span style='color:#000'><b>Ingress NGINX</b><br/><small>[Component: Helm]</small><br/>HTTP(S) hacia apps</span>"]
+            ingress["<span style='color:#000'><b>Gateway API (Kong)</b><br/><small>[Component: Helm]</small><br/>HTTP(S) hacia apps</span>"]
             openebs["<span style='color:#000'><b>OpenEBS</b><br/><small>[Component: Helm]</small><br/>LocalPV provisioner</span>"]
             longhorn["<span style='color:#000'><b>Longhorn</b><br/><small>[Component: Helm]</small><br/>Storage replicado v1</span>"]
             suc["<span style='color:#000'><b>SUC</b><br/><small>[Component: Helm]</small><br/>Upgrades K3s escalonados</span>"]

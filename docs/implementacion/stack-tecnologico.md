@@ -28,7 +28,7 @@ flowchart TB
     Dex[Dex]
     GitHub[GitHub_OAuth]
     MetalLB[MetalLB]
-    Ingress[Ingress_NGINX]
+    Gateway[Gateway_API_Kong]
   end
   subgraph capa4 [Capa 4 — Datos y secretos]
     OpenEBS[OpenEBS]
@@ -50,7 +50,7 @@ flowchart TB
   K3s --> ArgoCD
   ArgoCD --> Dex
   Dex --> GitHub
-  ArgoCD --> MetalLB --> Ingress
+  ArgoCD --> MetalLB --> Gateway
   ArgoCD --> OpenEBS
   ArgoCD --> Longhorn
   ArgoCD --> SealedSecrets
@@ -114,7 +114,7 @@ flowchart TB
 - **[Dex](https://dexidp.io/docs/)** — IdP OIDC (OpenID Connect) embebido en ArgoCD; SSO (inicio de sesión único) para ArgoCD, vCluster Platform e Incus UI (interfaz de usuario); Fase 4.
 - **[GitHub](https://docs.github.com/en/apps/oauth-apps)** — Connector OAuth + repos GitOps; Fase 4.
 - **[MetalLB](https://metallb.universe.tf/)** — LoadBalancer en LAN (red local); Fase 4 wave 0–1.
-- **[Ingress NGINX](https://kubernetes.github.io/ingress-nginx/)** — HTTP(S) hacia ArgoCD y vCluster; Fase 4 wave 1.
+- **[Gateway API](https://gateway-api.sigs.k8s.io/)** con **[Kong Ingress Controller](https://developer.konghq.com/kubernetes-ingress-controller/)** — HTTP(S) hacia ArgoCD y vCluster; Fase 4 wave 1 (alternativas: Traefik, NGINX Gateway Fabric).
 - **[1Password Python SDK](https://github.com/1Password/onepassword-sdk-python)** — Secretos OAuth desde la app local; Fase 4.
 
 ## Capa 4 — Storage y secretos en clúster

@@ -8,7 +8,7 @@ oliver), con controller **Argo CD** listo para GitOps.
 ## Qué aprendes
 
 K3s como Kubernetes ligero bare-metal: server/agent, CNI (Container Network Interface) configurable
-(Flannel por defecto), deshabilitar Traefik/ServiceLB para controlar Ingress y
+(Flannel por defecto), deshabilitar Traefik/ServiceLB para controlar el Gateway y
 LoadBalancer vía GitOps después.
 
 ## Stack de esta fase

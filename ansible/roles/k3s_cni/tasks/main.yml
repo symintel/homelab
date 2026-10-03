@@ -67,11 +67,17 @@
       changed_when: "'created' in calico_cr.stdout or 'configured' in calico_cr.stdout"
       when: not ansible_check_mode
 
-- name: Instalar Cilium (quick-install manifest)
+- name: Instalar Cilium (HelmChart del helm-controller de K3s)
   when: k3s_install.core.cni == 'cilium'
   block:
+    - name: Renderizar HelmChart de Cilium
+      ansible.builtin.template:
+        src: cilium-helmchart.yaml.j2
+        dest: /tmp/cilium-helmchart.yaml
+        mode: "0600"
+
     - name: Aplicar Cilium
-      ansible.builtin.command: k3s kubectl apply -f {{ k3s_cni_cilium_manifest_url }}
+      ansible.builtin.command: k3s kubectl apply -f /tmp/cilium-helmchart.yaml
       register: cilium_apply
       changed_when: "'created' in cilium_apply.stdout or 'configured' in cilium_apply.stdout"
       when: not ansible_check_mode

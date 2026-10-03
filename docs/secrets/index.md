@@ -35,6 +35,19 @@ kubectl apply -f secret-sellado.yaml
 rm secret-plano.yaml
 ```
 
+!!! warning "La llave de cifrado vive en 1Password"
+    Por defecto el controller genera su par de llaves dentro del clúster (y lo
+    renueva cada 30 días): si reinstalas K3s, se pierde y los `SealedSecret`
+    de git ya no se pueden descifrar. Aquí el par se genera **una vez**, se
+    guarda en 1Password (item `sealed-secrets`) y
+    `playbook-platform-secrets.yml` lo lleva al clúster; la renovación
+    automática está desactivada (`keyrenewperiod: "0"`). Cómo generarlo:
+    [Plataforma symintel — Paso 2](../symintel/github.md#paso-2-repos-app-de-argocd-y-ftp-manual).
+
+    Como el certificado (la llave pública) también está en 1Password, puedes
+    sellar sin tener acceso al clúster:
+    `kubeseal --cert tls.crt --format yaml < secret-plano.yaml > secret-sellado.yaml`.
+
 ## SOPS + age (complemento, cero pods)
 
 [SOPS](https://github.com/getsops/sops) — config pre-bootstrap (tokens Incus, etc.).

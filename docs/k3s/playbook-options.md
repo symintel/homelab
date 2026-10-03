@@ -4,7 +4,7 @@ Anexo de **[Fase 3 — K3s](../implementacion/fase-3-k3s.md)**.
 
 El playbook [`playbook-k3s.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-k3s.yml) instala **solo
 lo que ArgoCD no puede hacer**: binario K3s (distribución ligera de Kubernetes), kube-vip CP (control plane), controller ArgoCD,
-etiquetas de nodos, etc. Addons (MetalLB, Ingress, Longhorn, vCluster, …) van
+etiquetas de nodos, etc. Addons (MetalLB, Gateway, Longhorn, vCluster, …) van
 en el repo [`gitops`](https://github.com/symintel/gitops).
 
 Configuración: [`ansible/group_vars/incus_cluster/k3s_install.yml`](https://github.com/symintel/homelab/blob/main/ansible/group_vars/incus_cluster/k3s_install.yml)
@@ -44,7 +44,7 @@ ansible-playbook -i inventory.ini playbook-k3s.yml
     </div>
     <div class="card-col">
       <div class="card-title">Traefik cleanup</div>
-      <div class="text-muted">Evita conflicto con Ingress NGINX</div>
+      <div class="text-muted">Evita conflicto con el controlador de Gateway</div>
       <div class="text-muted">Play extra tras agents</div>
     </div>
     <div class="card-col">
@@ -69,7 +69,7 @@ ansible-playbook -i inventory.ini playbook-k3s.yml
 
 | Campo | Default | Descripción |
 |---|---|---|
-| `version` | `v1.36.2+k3s1` | Versión K3s |
+| `version` | `v1.36.5+k3s1` | Versión K3s (canal stable) |
 | `disable_components` | traefik, servicelb | `--disable` en server |
 | `cluster_cidr` | `10.42.0.0/16` | Pod CIDR |
 | `service_cidr` | `10.43.0.0/16` | Service CIDR |
@@ -176,9 +176,10 @@ Catálogo completo y guía paso a paso en [Fase 4 — GitOps](../implementacion/
 | OpenEBS | `openebs` | auto (wave 0) |
 | StorageClasses | `homelab-storage` | auto (wave 0) |
 | MetalLB | `metallb` + `metallb-config` | auto |
-| Ingress-Nginx | `ingress-nginx` | auto (wave 1) |
+| Gateway API + cert-manager | `gateway-api`, `cert-manager`, `cert-manager-config` | auto (waves 0–1) |
+| Controlador de Gateway | `kong` (o `traefik`, `nginx-gateway`) | auto (wave 1; solo uno) |
 | Longhorn | `longhorn` | auto (wave 1) |
-| ArgoCD Dex/ingress | `argocd-ingress`, `argocd-config` | auto (wave 2) |
+| ArgoCD Dex/ruta | `argocd-route`, `argocd` | auto (wave 2) |
 | K3s upgrades | `k3s-upgrade` | auto (wave 3) |
 | vCluster Platform | `vcluster-platform` | manual |
 | CAPN demo | `capn-demo` | manual |
@@ -188,8 +189,8 @@ Catálogo completo y guía paso a paso en [Fase 4 — GitOps](../implementacion/
 
 | Alternativa | Ventaja | Coste / riesgo |
 |---|---|---|
-| kube-vip | VIP estable solo para API `:6443` | No expone Ingress ni Services |
-| MetalLB | LoadBalancer para Ingress y apps | Pool `192.168.23.200–.220` debe estar libre (fuera del DHCP) |
+| kube-vip | VIP estable solo para API `:6443` | No expone Gateways ni Services |
+| MetalLB | LoadBalancer para el Gateway y apps | Pool `192.168.23.200–.220` debe estar libre (fuera del DHCP) |
 | CNI vía Ansible (`k3s_cni`) | Mismo play que bootstrap K3s | Cambiar CNI en vivo es disruptivo |
 | CNI vía GitOps (apps manuales) | Reinstalar sin Ansible | Solo si K3s ya tiene `flannel-backend=none` |
 
@@ -247,7 +248,7 @@ flowchart TB
     svcLB[Service_type_LoadBalancer]
     metalLB --> svcLB
   end
-  ingress[Ingress_Nginx] --> svcLB
+  gateway[Gateway_Kong] --> svcLB
 ```
 
 kube-vip **nunca** debe gestionar Services `LoadBalancer` (`svc_enable=false`).

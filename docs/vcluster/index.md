@@ -2,7 +2,7 @@
 
 !!! info "Parte de la guía de implementación"
     **[Fase 5 — vCluster](../implementacion/fase-5-vcluster.md)** — pasos ejecutables.
-    Requiere **[Fase 4 — GitOps](../implementacion/fase-4-gitops.md)** (Dex, Ingress).
+    Requiere **[Fase 4 — GitOps](../implementacion/fase-4-gitops.md)** (Dex, Gateway).
 
 Complemento de profundización. vCluster Platform ofrece **UI (interfaz de usuario) web**, **SSO (inicio de sesión único) vía
 Dex de ArgoCD** y **descarga de kubeconfig** del management K3s (connected
@@ -24,10 +24,10 @@ Sync **manual** — Application `vcluster-platform` (comentada en el Application
 | Recurso | Para qué sirve |
 |---|---|
 | [`vcluster-platform.yaml`](https://github.com/symintel/gitops/blob/main/argocd/apps/vcluster-platform.yaml) | Application Helm que instala Loft Platform en `vcluster-platform` |
-| [`vcluster/values/platform.yaml`](https://github.com/symintel/gitops/blob/main/vcluster/values/platform.yaml) | Host `vcluster.homelab.local`, OIDC issuer → ArgoCD Dex |
+| [`vcluster/values/platform.yaml`](https://github.com/symintel/gitops/blob/main/vcluster/values/platform.yaml) | HTTPRoute `vcluster.homelab.local` (`vcluster/route`), OIDC issuer → ArgoCD Dex |
 | [`argocd/config/dex.config`](https://github.com/symintel/gitops/blob/main/argocd/config/dex.config) | Connector GitHub + OAuth client `vcluster-platform` |
 | [`argocd/secrets/1password.md`](https://github.com/symintel/gitops/blob/main/argocd/secrets/1password.md) | Ítems 1Password → `argocd-secret` |
-| **`argocd-ingress`** | Publica ArgoCD/Dex en `argocd.homelab.local` (ver [GitOps](../gitops/index.md)) |
+| **`argocd-route`** | Publica ArgoCD/Dex en `argocd.homelab.local` (ver [GitOps](../gitops/index.md)) |
 
 ## Flujo de autenticación
 
@@ -51,7 +51,7 @@ sequenceDiagram
 ## Implementación (resumen)
 
 Sigue la **[Fase 4 — GitOps](../implementacion/fase-4-gitops.md)** hasta
-completar OAuth Dex e Ingress. Luego:
+completar OAuth Dex y el Gateway. Luego:
 
 ### 1. Secretos OAuth (paso 4.7 de la guía GitOps)
 
@@ -76,7 +76,7 @@ ArgoCD UI → `vcluster-platform` → **Sync**.
 
 ### 3. Validar SSO GitHub
 
-Tras sync de `argocd-config`, login en ArgoCD o Platform debe ofrecer **GitHub**.
+Tras sync de `argocd`, login en ArgoCD o Platform debe ofrecer **GitHub**.
 Si falla, revisa el Redirect URIs de la OAuth App y el team `symintel/devops` en
 [`dex.config`](https://github.com/symintel/gitops/blob/main/argocd/config/dex.config).
 
@@ -85,16 +85,15 @@ Con SSO estable, pon `auth.password.disabled: true` en `platform.yaml`.
 ### 4. /etc/hosts
 
 ```
-<IP-del-Ingress>  argocd.homelab.local vcluster.homelab.local
+<IP-del-Gateway>  argocd.homelab.local vcluster.homelab.local
 192.168.20.6      incus.homelab.local
 ```
 
-`<IP-del-Ingress>` es la EXTERNAL-IP que MetalLB le da al Ingress NGINX;
-`incus` apunta siempre a invincible. Obtén la IP del Ingress:
+`<IP-del-Gateway>` es la IP que MetalLB le da al Gateway `homelab`;
+`incus` apunta siempre a invincible. Obtén la IP del Gateway:
 
 ```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}'; echo
+kubectl get gateway homelab -n gateway -o jsonpath='{.status.addresses[0].value}'; echo
 ```
 
 ## Uso diario
@@ -160,5 +159,5 @@ vcluster connect <nombre> -n <namespace>
 Deben estar **Healthy** antes de sync Platform:
 
 - `openebs`, `homelab-storage` (PVCs)
-- `metallb`, `metallb-config`, `ingress-nginx` (URLs HTTPS)
-- `argocd-ingress`, `argocd-config` (Dex + staticClient)
+- `metallb`, `metallb-config`, `cert-manager-config` y el controlador de Gateway (`kong`) (URLs HTTPS)
+- `argocd-route`, `argocd` (Dex + staticClient)

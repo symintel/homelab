@@ -144,7 +144,11 @@ Con una cuenta **owner de la organización** `symintel`:
    `gitops`**) → item `symintel-argocd` con los mismos tres campos. Va
    después de los repos porque se instala en `gitops`.
    [Permisos y pasos](../symintel/github.md#paso-2-repos-app-de-argocd-y-ftp-manual).
-6. **Credenciales FTP (File Transfer Protocol) del repo `api`**: `api` es el
+6. **Llave de Sealed Secrets** *(opcional hasta la Fase 6)*: un par de llaves
+   generado con `openssl`, en el item `sealed-secrets` (`certificate` y
+   `private_key`), para que sobreviva si reinstalas K3s.
+   [Comando y pasos](../symintel/github.md#paso-2-repos-app-de-argocd-y-ftp-manual).
+7. **Credenciales FTP (File Transfer Protocol) del repo `api`**: `api` es el
    primer proyecto del mapa de repos y despliega por FTP, así que necesita su
    item `ftp-api` (Nota segura) desde el primer pipeline. Cada repo que
    agregues después sigue el

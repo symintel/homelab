@@ -12,12 +12,32 @@
   changed_when: argocd_ns.rc == 0
   when: argocd_kubectl.rc == 0
 
-- name: Instalar ArgoCD controller
+# version: latest -> la última versión estable de ArgoCD (archivo VERSION de la
+# rama "stable" del repo oficial). Un tag fijo (p. ej. v3.5.3) la pisa.
+- name: Resolver la versión de ArgoCD a instalar
+  ansible.builtin.uri:
+    url: https://raw.githubusercontent.com/argoproj/argo-cd/stable/VERSION
+    return_content: true
+  register: argocd_stable
+  when: k3s_install.gitops_argocd.version == 'latest'
+  check_mode: false
+  changed_when: false
+
+- name: Fijar la versión de ArgoCD
+  ansible.builtin.set_fact:
+    argocd_version: >-
+      {{ ('v' ~ (argocd_stable.content | trim))
+         if k3s_install.gitops_argocd.version == 'latest'
+         else k3s_install.gitops_argocd.version }}
+
+# --server-side --force-conflicts: obligatorio desde ArgoCD 3.3, cuyo CRD de
+# ApplicationSet supera el límite de anotación del apply normal.
+- name: Instalar ArgoCD controller ({{ argocd_version }})
   ansible.builtin.command: >-
-    k3s kubectl apply -n argocd
-    -f https://raw.githubusercontent.com/argoproj/argo-cd/{{ k3s_install.gitops_argocd.version }}/manifests/install.yaml
+    k3s kubectl apply -n argocd --server-side --force-conflicts
+    -f https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/manifests/install.yaml
   register: argocd_install
-  changed_when: "'created' in argocd_install.stdout or 'configured' in argocd_install.stdout"
+  changed_when: "'created' in argocd_install.stdout or 'serverside-applied' in argocd_install.stdout"
   when: argocd_kubectl.rc == 0
 
 - name: Esperar argocd-server Ready
@@ -32,7 +52,7 @@
 - name: Recordar paso GitOps post-bootstrap
   ansible.builtin.debug:
     msg: >-
-      ArgoCD controller listo. Aplica el ApplicationSet de bootstrap desde gitops:
+      ArgoCD {{ argocd_version }} listo. Aplica el ApplicationSet de bootstrap desde gitops:
       kubectl apply -f bootstrap/root-appset.yaml
       (repo: {{ k3s_install.gitops_argocd.gitops_repo_url }})
   when: argocd_kubectl.rc == 0

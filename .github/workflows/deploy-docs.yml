@@ -1,4 +1,5 @@
 name: Build y desplegar documentación (MkDocs -> GitHub Pages)
+# Corre en el runner arc-runners del HomeLab.
 
 on:
   push:
@@ -21,13 +22,13 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: arc-runners
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.x'
           cache: 'pip'
@@ -39,20 +40,20 @@ jobs:
         run: mkdocs build --strict --clean
 
       - name: Configurar Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Subir artefacto del sitio
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: arc-runners
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Desplegar a GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

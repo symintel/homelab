@@ -37,3 +37,32 @@
 - name: Aplicar sysctl
   ansible.builtin.command: sysctl --system
   changed_when: false
+
+# Longhorn (volúmenes replicados) exige estos paquetes y el módulo iSCSI
+# en cada nodo; sin ellos longhorn-manager queda en CrashLoopBackOff.
+- name: Instalar requisitos de Longhorn (iSCSI y NFS)
+  ansible.builtin.apt:
+    name:
+      - open-iscsi
+      - nfs-common
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Habilitar iscsid
+  ansible.builtin.systemd:
+    name: iscsid
+    enabled: true
+    state: started
+
+- name: Cargar el modulo iscsi_tcp al arrancar
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/longhorn.conf
+    content: |
+      iscsi_tcp
+    mode: "0644"
+
+- name: Cargar iscsi_tcp ahora
+  community.general.modprobe:
+    name: iscsi_tcp
+    state: present

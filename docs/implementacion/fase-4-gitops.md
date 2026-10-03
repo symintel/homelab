@@ -3,7 +3,7 @@
 ## Objetivo
 
 Desplegar la plataforma completa vía **Argo CD** desde
-[`gitops/`](https://github.com/symintel/gitops): storage, MetalLB, Ingress, Dex +
+[`gitops/`](https://github.com/symintel/gitops): storage, MetalLB, Gateway API, Dex +
 GitHub OAuth, y waves de operaciones.
 
 ## Qué aprendes
@@ -17,6 +17,8 @@ Ansible bootstrap vs GitOps continuo.
 ```mermaid
 flowchart LR
   subgraph wave0 [Wave_0]
+    GA[Gateway_API_CRDs]
+    CM[cert_manager]
     SS[Sealed_Secrets]
     OB[OpenEBS]
     SC[StorageClasses]
@@ -24,11 +26,12 @@ flowchart LR
   end
   subgraph wave1 [Wave_1]
     MLC[MetalLB_config]
-    ING[Ingress_NGINX]
+    CMC[CA_del_HomeLab]
+    GW[Gateway_Kong]
     LH[Longhorn]
   end
   subgraph wave2 [Wave_2]
-    AING[ArgoCD_Ingress]
+    AR[ArgoCD_HTTPRoute]
     ACFG[ArgoCD_Dex]
   end
   subgraph wave3 [Wave_3]
@@ -44,12 +47,20 @@ flowchart LR
 
 - **[Argo CD](https://argo-cd.readthedocs.io/)** — GitOps; toda la fase.
 - **[MetalLB](https://metallb.universe.tf/)** — LoadBalancer LAN (red local); wave 0–1.
-- **[Ingress NGINX](https://kubernetes.github.io/ingress-nginx/)** — HTTP(S); wave 1.
+- **[Gateway API](https://gateway-api.sigs.k8s.io/)** — API estándar de Kubernetes para publicar servicios HTTP(S) (reemplaza a `Ingress`); sus CRDs van en wave 0.
+- **[Kong Ingress Controller](https://developer.konghq.com/kubernetes-ingress-controller/)** (KIC) — controlador de Gateway API predeterminado; wave 1. Alternativas: [Traefik](https://doc.traefik.io/traefik/routing/providers/kubernetes-gateway/) y [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/).
+- **[cert-manager](https://cert-manager.io/docs/)** — emite los certificados TLS con una CA (autoridad certificadora) propia del HomeLab; waves 0–1.
 - **[OpenEBS](https://openebs.io/docs)** / **[Longhorn](https://longhorn.io/docs/)** — Storage; waves 0–1.
 - **[Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets)** — Secretos en git; wave 0.
 - **[Dex](https://dexidp.io/docs/)** + **[GitHub](https://docs.github.com/en/apps/oauth-apps)** — SSO (inicio de sesión único); wave 2.
 - **[1Password Python SDK](https://github.com/1Password/onepassword-sdk-python)** — OAuth fuera de git; paso 4.7 (app local, DesktopAuth).
 - **[system-upgrade-controller](https://github.com/rancher/system-upgrade-controller)** — Upgrades K3s (distribución ligera de Kubernetes); wave 3.
+
+!!! note "Por qué Gateway API y no Ingress"
+    El proyecto Ingress NGINX se archivó en marzo de 2026 y `Ingress` está
+    congelado en Kubernetes. El HomeLab publica todo con `Gateway` y
+    `HTTPRoute`. Se activa **un solo** controlador a la vez (Kong, Traefik o
+    NGINX Gateway Fabric): ver [Cambiar el controlador de Gateway](../operacion/cambiar-gateway.md).
 
 Profundización: [Catálogo GitOps](../gitops/index.md) · [Storage](../storage/index.md) · [Secretos](../secrets/index.md)
 
@@ -61,7 +72,7 @@ Profundización: [Catálogo GitOps](../gitops/index.md) · [Storage](../storage/
       completado (Apps, repos e items de 1Password).
 - [ ] En el router, el rango **`192.168.23.200–192.168.23.220`** fuera del
       DHCP (reservado): es el pool de MetalLB para los servicios
-      `LoadBalancer`, como el Ingress ([esquema de IPs](../networking/index.md#esquema-de-ips)).
+      `LoadBalancer`, como el Gateway ([esquema de IPs](../networking/index.md#esquema-de-ips)).
 
 ---
 
@@ -116,7 +127,7 @@ kubectl get nodes
   <div class="option-grid">
     <div class="card-col">
       <div class="card-title">Kubeconfig local (Ansible o manual)</div>
-      <div class="text-muted">Funciona antes de Ingress y vCluster</div>
+      <div class="text-muted">Funciona antes del Gateway y vCluster</div>
       <div class="text-muted">Archivo en disco; rotación manual</div>
     </div>
     <div class="card-col">
@@ -165,15 +176,22 @@ kubectl apply -f gitops/bootstrap/root-appset.yaml
 
 [`bootstrap/root-appset.yaml`](https://github.com/symintel/gitops/blob/main/bootstrap/root-appset.yaml)
 genera una Application raíz, `homelab-root`, con las apps que están
-**descomentadas** en su lista `apps`. Al principio solo está `argocd-config`
+**descomentadas** en su lista `apps`. Al principio solo está `argocd` (ArgoCD administrándose a sí mismo)
 (Dex, RBAC y el health check que necesitan las olas), para ir probando cada
 componente de a uno:
 
 1. Descomenta la siguiente app de la lista (van en orden de ola) y haz push
    al repo `gitops`.
-2. ArgoCD la despliega; espera a que quede `Healthy`
+2. **Vuelve a aplicar el ApplicationSet**: ArgoCD no lo gestiona (lo creaste
+   tú con `kubectl`), así que el push solo no cambia la lista:
+
+    ```bash
+    kubectl apply -f gitops/bootstrap/root-appset.yaml
+    ```
+
+3. ArgoCD la despliega; espera a que quede `Healthy`
    (`kubectl get applications -n argocd`).
-3. Sigue con la próxima.
+4. Sigue con la próxima.
 
 **Olas:** como todas las apps se sincronizan juntas en `homelab-root`, ArgoCD
 respeta su anotación `argocd.argoproj.io/sync-wave` y despliega por olas
@@ -189,10 +207,10 @@ Application (los recursos que creó quedan en el clúster).
 kubectl get applications -n argocd
 ```
 
-UI (interfaz de usuario) provisional (sin Ingress aún):
+UI (interfaz de usuario) provisional (sin Gateway aún; `argocd-server` habla HTTP, abre `http://localhost:8080`):
 
 ```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+kubectl port-forward svc/argocd-server -n argocd 8080:80
 kubectl get secret argocd-initial-admin-secret -n argocd \
   -o jsonpath='{.data.password}' | base64 -d; echo
 ```
@@ -201,11 +219,13 @@ kubectl get secret argocd-initial-admin-secret -n argocd \
 
 ## 4.3 — Wave 0: secretos + storage + MetalLB controller
 
-Espera `Healthy` en: `sealed-secrets`, `openebs`, `homelab-storage`, `metallb`.
+Espera `Healthy` en: `gateway-api`, `cert-manager`, `sealed-secrets`, `openebs`, `homelab-storage`, `metallb`.
 
 | Application | Producto | Para qué sirve |
 |---|---|---|
-| `sealed-secrets` | [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) | Descifra `SealedSecret` en el clúster |
+| `gateway-api` | [Gateway API](https://gateway-api.sigs.k8s.io/) | CRDs (Custom Resource Definition) `Gateway`, `HTTPRoute`, etc., canal standard |
+| `cert-manager` | [cert-manager](https://cert-manager.io/docs/) | Emite certificados; crea el de cada Gateway con la anotación `cert-manager.io/cluster-issuer` |
+| `sealed-secrets` | [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) | Descifra `SealedSecret` en el clúster; usa la llave de 1Password (item `sealed-secrets`) si el playbook de secretos ya la creó |
 | `openebs` | [OpenEBS](https://openebs.io/docs) | LocalPV default |
 | `homelab-storage` | — | StorageClasses `openebs-hostpath`, `longhorn-mixto` |
 | `metallb` | [MetalLB](https://metallb.universe.tf/) | Controller LoadBalancer |
@@ -220,19 +240,20 @@ kubectl get pods -n openebs
 
 ---
 
-## 4.4 — Wave 1: pool MetalLB + Ingress + Longhorn
+## 4.4 — Wave 1: pool MetalLB + Gateway + Longhorn
 
-Espera `Healthy` en: `metallb-config`, `ingress-nginx`, `longhorn`.
+Espera `Healthy` en: `metallb-config`, `cert-manager-config`, `kong` y `longhorn`.
 
 | Application | Producto | Para qué sirve |
 |---|---|---|
 | `metallb-config` | [MetalLB](https://metallb.universe.tf/) | Pool L2 `192.168.23.200–.220` |
-| `ingress-nginx` | [Ingress NGINX](https://kubernetes.github.io/ingress-nginx/) | Ingress HTTP(S) |
+| `cert-manager-config` | [cert-manager](https://cert-manager.io/docs/) | CA propia del HomeLab (`ClusterIssuer homelab-ca`) |
+| `kong` | [Kong Ingress Controller](https://developer.konghq.com/kubernetes-ingress-controller/) | Controlador de Gateway API y `Gateway homelab` (HTTP 80 y HTTPS 443, `*.homelab.local`) |
 | `longhorn` | [Longhorn](https://longhorn.io/docs/) | Storage replicado HA |
 
 ```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller
-# EXTERNAL-IP en rango 192.168.23.200–.220
+kubectl get gateway homelab -n gateway
+# ADDRESS en rango 192.168.23.200–.220 y PROGRAMMED=True
 ```
 
 **Verificar:**
@@ -246,12 +267,12 @@ kubectl get pods -n longhorn-system
 
 ## 4.5 — Wave 2: ArgoCD en LAN + Dex
 
-Espera `Healthy` en `argocd-ingress` y `argocd-config`.
+Espera `Healthy` en `argocd-route` y `argocd`.
 
 | Recurso | Producto | Para qué sirve |
 |---|---|---|
-| `argocd-ingress` | [Ingress NGINX](https://kubernetes.github.io/ingress-nginx/) | `https://argocd.homelab.local` |
-| `argocd-config` | [Dex](https://dexidp.io/docs/) | Connector GitHub + staticClients vCluster e Incus UI |
+| `argocd-route` | [Gateway API](https://gateway-api.sigs.k8s.io/) | `HTTPRoute` hacia `https://argocd.homelab.local` (el Gateway termina el TLS; `argocd-server` queda en HTTP con `server.insecure`) |
+| `argocd` | [ArgoCD](https://argo-cd.readthedocs.io/) y [Dex](https://dexidp.io/docs/) | ArgoCD se actualiza solo (tag `stable`); suma el connector GitHub, los staticClients de vCluster e Incus UI, el RBAC y el health check de Application ([Actualizar ArgoCD](../operacion/actualizar-argocd.md)) |
 
 ---
 
@@ -269,8 +290,8 @@ No uses kube-vip para Services de aplicación.
 
 | Alternativa | Ventaja | Coste / riesgo |
 |---|---|---|
-| kube-vip (Fase 3) | VIP fija solo para API `:6443` | No expone Ingress ni Services LB |
-| MetalLB (Fase 4) | `LoadBalancer` para Ingress y apps | Pool L2 `192.168.23.200–.220` debe estar libre en LAN |
+| kube-vip (Fase 3) | VIP fija solo para API `:6443` | No expone Gateways ni Services LB |
+| MetalLB (Fase 4) | `LoadBalancer` para el Gateway y apps | Pool L2 `192.168.23.200–.220` debe estar libre en LAN |
 | Ambos (default HomeLab) | Responsabilidades separadas | Dos mecanismos VIP distintos — no mezclar roles |
 
 ---
@@ -340,7 +361,7 @@ Ansible los genera en 1Password si faltan y los aplica según destino:
 ### Incus UI OIDC
 
 Requisitos: UI instalada en [Fase 2](fase-2-incus.md#ui-de-administracion),
-`argocd-config` Healthy, secretos inyectados y Dex reiniciado.
+`argocd` Healthy, secretos inyectados y Dex reiniciado.
 
 **Ansible** (recomendado) — en `group_vars/dex_oauth_secrets.yml` activa
 `apply_incus: true` y `configure_incus_auth: true`, luego:
@@ -421,17 +442,20 @@ sequenceDiagram
 ## 4.8 — /etc/hosts
 
 ```
-<IP-del-Ingress>  argocd.homelab.local vcluster.homelab.local
+<IP-del-Gateway>  argocd.homelab.local vcluster.homelab.local
 192.168.20.6      incus.homelab.local
 ```
 
-`<IP-del-Ingress>` es la EXTERNAL-IP que MetalLB le da al Ingress NGINX;
-`incus` apunta siempre a invincible. Obtén la IP del Ingress:
+`<IP-del-Gateway>` es la IP que MetalLB le da al Gateway `homelab`;
+`incus` apunta siempre a invincible. Obtén la IP del Gateway:
 
 ```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}'; echo
+kubectl get gateway homelab -n gateway -o jsonpath='{.status.addresses[0].value}'; echo
 ```
+
+El certificado lo firma la CA del HomeLab: para que el navegador confíe,
+importa su certificado raíz (`kubectl -n cert-manager get secret homelab-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > homelab-ca.crt`)
+o usa `curl -k` mientras tanto.
 
 ```bash
 curl -kI https://argocd.homelab.local
@@ -453,7 +477,7 @@ Espera `Healthy` en `k3s-upgrade` ([system-upgrade-controller](https://github.co
 | Nodos Ready | `kubectl get nodes` → 3 Ready |
 | Apps auto Healthy | `kubectl get applications -n argocd` |
 | Storage default | PVC `openebs-hostpath` provisiona |
-| Ingress responde | `curl -k https://argocd.homelab.local` |
+| Gateway responde | `curl -k https://argocd.homelab.local` |
 | SSO Dex | Login GitHub en ArgoCD |
 | Incus UI OIDC | Login SSO en `https://incus.homelab.local:8443` |
 | Runner ARC | `arc-runners` Healthy; runner listado en *symintel → Settings → Actions → Runners* ([4.11](#411-arc-y-pipeline-de-opentofu)) |
@@ -521,9 +545,11 @@ workflow de CI/CD.
 | Síntoma | Revisar |
 |---|---|
 | Application `Degraded` | `kubectl describe application -n argocd <nombre>` |
-| Ingress sin EXTERNAL-IP | `metallb-config`, pool libre |
+| Gateway sin dirección | `metallb-config`, pool libre |
 | SSO falla | Secretos 1Password + restart `argocd-dex-server` |
 | `homelab-root` `ComparisonError` / repo no accesible | Falta `argocd/repo-gitops`, o la App `symintel-argocd` no está instalada en `symintel/gitops`: re-correr `playbook-platform-secrets.yml` |
+| `arc-runners` `OutOfSync` y el pod del listener se reinicia cada pocos minutos | ArgoCD poda en bucle los recursos que crea el controlador de ARC (`AutoscalingListener`, `Role`, `RoleBinding`: copian la etiqueta `app.kubernetes.io/instance`). Se corrige con `application.resourceTrackingMethod: annotation` en `argocd-cm` (ya está en `gitops/argocd/config`). Comprueba: `kubectl -n argocd get cm argocd-cm -o jsonpath='{.data.application\.resourceTrackingMethod}'` → `annotation`; si no, sincroniza `argocd` y reinicia el controlador: `kubectl -n argocd rollout restart statefulset argocd-application-controller` |
+| Apps en `Error`: `ComparisonError … terminatingReplicas: field not declared in schema` | ArgoCD es anterior a la 3.5 y el clúster tiene Kubernetes 1.34 o más nuevo: [Actualizar ArgoCD](../operacion/actualizar-argocd.md#la-primera-vez-actualizar-a-mano-y-despues-activar-la-app) |
 | Runner no aparece en GitHub | `kubectl logs -n arc-systems` del listener; Secret `arc-runners/arc-runners-github-app` (App instalada en `symintel`) |
 | Pipeline `tofu` sin runner o sin credenciales | Runner `arc-runners` Online; Secrets `symintel-terraform-app`/`tofu-vars` en `arc-runners` |
 | Longhorn pending | Etiquetas Longhorn ([playbook-options](../k3s/playbook-options.md)) |

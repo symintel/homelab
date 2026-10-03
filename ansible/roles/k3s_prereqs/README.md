@@ -1,7 +1,7 @@
 # k3s_prereqs
 
 Prepara el **sistema operativo** de todos los nodos antes de instalar K3s:
-swap deshabilitado, módulos de kernel y `sysctl` para CNI.
+swap deshabilitado, módulos de kernel, `sysctl` para CNI y requisitos de Longhorn.
 
 ## Playbook
 
@@ -29,6 +29,7 @@ Ninguna específica del rol.
 2. Carga módulos `br_netfilter` y `overlay` (`/etc/modules-load.d/k3s.conf`).
 3. Configura `net.bridge.bridge-nf-call-iptables` e `ip_forward` (`/etc/sysctl.d/k3s.conf`).
 4. Aplica `sysctl --system`.
+5. Instala `open-iscsi` y `nfs-common`, habilita `iscsid` y carga `iscsi_tcp` (Longhorn no arranca sin ellos).
 
 ## Verificar
 

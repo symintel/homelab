@@ -28,7 +28,7 @@ ArgoCD.
 El diff usa una cuenta de ArgoCD de **solo lectura**, `ci`, que ya está
 declarada en `gitops/argocd/config` (`accounts.ci: apiKey` y
 `g, ci, role:readonly`). Falta generar su token y llevarlo al runner. Hay que
-hacerlo con ArgoCD ya funcionando y `argocd-config` sincronizado. Mientras no
+hacerlo con ArgoCD ya funcionando y `argocd` sincronizado. Mientras no
 exista, el job se salta con un aviso y los demás jobs corren igual.
 
 1. Genera el token con la CLI (Command Line Interface) de ArgoCD, logueado como admin:
@@ -69,7 +69,7 @@ inputs:
 | Input | Default | Para qué |
 |---|---|---|
 | `argocd-diff` | `true` | Desactivar el diff |
-| `allowed-secrets` | `argocd/apps/arc-helm-repo.yaml` | Rutas que pueden tener un `Secret` en texto plano (separadas por espacio) |
+| `allowed-secrets` | `argocd/apps/arc-helm-repo.yaml argocd/apps/nginx-gateway-helm-repo.yaml` | Rutas que pueden tener un `Secret` en texto plano (separadas por espacio) |
 | `no-wave-apps` | `vcluster-platform capn-demo canal cilium` | Applications que pueden no tener `sync-wave` |
 
 En el propio repo `gitops`: `.yamllint.yaml` (reglas de yamllint) y
@@ -86,4 +86,4 @@ En el propio repo `gitops`: `.yamllint.yaml` (reglas de yamllint) y
 | `schemas`: `could not find schema` | Un CRD que no está en el catálogo; si es a propósito, hay que agregarlo a los `-skip` del job |
 | `security`: gitleaks encontró algo | Si es un secreto real: rótalo y sácalo del historial. Si es un ejemplo con placeholders, nómbralo `*.example.yaml` |
 | `argocd-diff` omitido | Falta el token (sección *Activar el diff*) |
-| `argocd-diff`: error al comparar | La cuenta `ci` no existe o no tiene `role:readonly` (sincroniza `argocd-config`), o el token venció |
+| `argocd-diff`: error al comparar | La cuenta `ci` no existe o no tiene `role:readonly` (sincroniza `argocd`), o el token venció |

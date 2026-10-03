@@ -74,7 +74,7 @@ flowchart LR
     </div>
     <div class="card stepper-card">
       <div class="card-title"><a href="fase-4-gitops/">GitOps</a> <span class="tag tag-accent">Completada</span></div>
-      <div class="card-body">MetalLB, Ingress, storage, Dex, waves.</div>
+      <div class="card-body">MetalLB, Gateway API, storage, Dex, waves.</div>
       <div class="card-meta">Argo CD + <code>gitops</code></div>
     </div>
   </div>
@@ -109,7 +109,7 @@ URLs, `/etc/hosts`, nodos y verificación.
 | Repo | Qué instala | Herramienta |
 |---|---|---|
 | [`homelab`](https://github.com/symintel/homelab) | Red SO, Incus, K3s, kube-vip, controller ArgoCD | [Ansible](https://docs.ansible.com/) |
-| [`gitops`](https://github.com/symintel/gitops) | MetalLB, Ingress, storage, vCluster, CAPN, … | [Argo CD](https://argo-cd.readthedocs.io/) |
+| [`gitops`](https://github.com/symintel/gitops) | MetalLB, Gateway API, storage, vCluster, CAPN, … | [Argo CD](https://argo-cd.readthedocs.io/) |
 
 ## Stack tecnológico
 

@@ -43,6 +43,7 @@ vez que aparecen en cada página llevan el significado entre paréntesis.
 | **JSON** | JavaScript Object Notation | Formato de texto para datos estructurados. |
 | **K3s** | [distribución ligera de Kubernetes](https://k3s.io/) | Kubernetes empaquetado en un solo binario, pensado para edge y HomeLabs. |
 | **K8s** | [Kubernetes](https://kubernetes.io/) | Plataforma de orquestación de contenedores. |
+| **KIC** | [Kong Ingress Controller](https://developer.konghq.com/kubernetes-ingress-controller/) | Controlador de Kong para Kubernetes; aquí implementa Gateway API. |
 | **L2** | capa 2 del modelo OSI | Capa de enlace del modelo OSI: tráfico dentro de la misma red local (MAC, ARP). |
 | **L3** | capa 3 del modelo OSI | Capa de red del modelo OSI: IPs y ruteo. |
 | **L7** | capa 7 del modelo OSI | Capa de aplicación del modelo OSI: HTTP y similares. |
@@ -55,6 +56,7 @@ vez que aparecen en cada página llevan el significado entre paréntesis.
 | **NFS** | Network File System | Protocolo de carpetas compartidas por red en Linux. |
 | **NIC** | tarjeta de red | Network Interface Card. |
 | **NVMe** | disco SSD por PCIe | Non-Volatile Memory Express: discos SSD de alta velocidad. |
+| **OCI** | [Open Container Initiative](https://opencontainers.org/) | Estándar de imágenes y registros; ARC y NGINX Gateway Fabric publican su chart de Helm en un registro OCI. |
 | **OIDC** | [OpenID Connect](https://openid.net/developers/how-connect-works/) | Protocolo de inicio de sesión sobre OAuth 2.0; Dex lo usa para el login con GitHub. |
 | **OS** | sistema operativo | Operating System. |
 | **OVN** | [Open Virtual Network](https://www.ovn.org/) | Red virtual definida por software que Incus puede usar. |

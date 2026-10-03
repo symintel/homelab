@@ -24,13 +24,13 @@ flowchart TB
 
 - **[vCluster Platform](https://www.vcluster.com/docs/platform/)** — UI + control plane virtual; Fase 5.
 - **[Dex](https://dexidp.io/docs/)** — IdP OIDC (OpenID Connect); configurado en Fase 4.
-- **[Ingress NGINX](https://kubernetes.github.io/ingress-nginx/)** — Expone Platform en LAN (red local).
+- **[Gateway API](https://gateway-api.sigs.k8s.io/)** — Expone Platform en LAN (red local) con un `HTTPRoute` sobre el Gateway `homelab`.
 
 Profundización: [vCluster Platform](../vcluster/index.md)
 
 ## Antes de empezar
 
-- [ ] [Fase 4 — GitOps](fase-4-gitops.md) completada (Ingress, Dex, OAuth 1Password).
+- [ ] [Fase 4 — GitOps](fase-4-gitops.md) completada (Gateway, Dex, OAuth 1Password).
 - [ ] `/etc/hosts` con `vcluster.homelab.local`.
 
 ## Ejecutar

@@ -22,6 +22,7 @@ primero en 1Password (bóveda `HomeLab`) y después se lleva al clúster.
 | Credenciales FTP de un repo | `ftp-<repo>` | `playbook-platform-secrets.yml` + pipeline de `infra` |
 | Client secret de Dex (login con GitHub) | `symintel-dex` | `playbook-dex-oauth-secrets.yml` |
 | Contraseña de root de los nodos | `root@<nodo>` (la crea el playbook) | `playbook-rotate-root-passwords.yml` |
+| Llave de Sealed Secrets | `sealed-secrets` | `playbook-platform-secrets.yml` ([ojo: ver abajo](#llave-de-sealed-secrets)) |
 | Token de ArgoCD del pipeline de `gitops` (cuenta `ci`) | `argocd-ci` | `playbook-platform-secrets.yml` ([cómo generarlo](pipeline-gitops.md#activar-el-diff-contra-el-cluster-una-vez)) |
 
 ## Private key de una GitHub App
@@ -80,6 +81,29 @@ ya está deshabilitado; esta contraseña es para la consola.
 ansible-playbook -i inventory.ini playbook-rotate-root-passwords.yml               # todos
 ansible-playbook -i inventory.ini playbook-rotate-root-passwords.yml --limit deborah
 ```
+
+## Llave de Sealed Secrets
+
+**No se rota a la ligera.** Los `SealedSecret` que ya están en git se cifraron
+con la llave actual: si la cambias, esos archivos dejan de poder
+descifrarse. La llave no vence en la práctica (el certificado vale 10 años) y
+la renovación automática está desactivada.
+
+Solo hay que tocarla si se filtró la llave **privada**. En ese caso:
+
+1. Genera un par nuevo
+   ([comando](../symintel/github.md#paso-2-repos-app-de-argocd-y-ftp-manual)).
+2. **Antes de reemplazar nada**, vuelve a sellar cada secreto con la llave
+   nueva (`kubeseal --cert <tls.crt nuevo> …`) y commitea los `SealedSecret`
+   nuevos.
+3. Reemplaza `certificate` y `private_key` en el item `sealed-secrets`,
+   re-corre `playbook-platform-secrets.yml` y reinicia el controlador:
+   `kubectl -n kube-system rollout restart deploy/sealed-secrets`.
+
+**Reinstalar K3s** no es una rotación: con el item en 1Password, el playbook
+vuelve a crear el mismo Secret y los `SealedSecret` de git siguen
+funcionando. Hazlo **antes** de activar `sealed-secrets` en
+`root-appset.yaml`.
 
 ## Verificar
 

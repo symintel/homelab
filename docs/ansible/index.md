@@ -27,7 +27,7 @@ su `README.md` con variables, tags y verificación.
 | [`incus_cluster`](https://github.com/symintel/homelab/blob/main/ansible/roles/incus_cluster/README.md) | Bootstrap/join/groups Incus | `playbook-incus-cluster.yml` | `bootstrap`, `join`, `groups`, `scheduler` |
 | [`incus_ui`](https://github.com/symintel/homelab/blob/main/ansible/roles/incus_ui/README.md) | UI nativa Incus | `playbook-incus-cluster.yml` | `ui` |
 | [`bind_dns`](https://github.com/symintel/homelab/blob/main/ansible/roles/bind_dns/README.md) | BIND en deborah: DNS de la LAN y zonas `mco.local` | `playbook-bind-dns.yml` | — |
-| [`k3s_prereqs`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_prereqs/README.md) | Swap, módulos kernel, sysctl | `playbook-k3s.yml` | `prereqs`, `always` |
+| [`k3s_prereqs`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_prereqs/README.md) | Swap, módulos kernel, sysctl, requisitos de Longhorn (open-iscsi, NFS) | `playbook-k3s.yml` | `prereqs`, `always` |
 | [`k3s_server`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_server/README.md) | Control-plane K3s | `playbook-k3s.yml` | `server`, `core` |
 | [`k3s_cni`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_cni/README.md) | CNI Canal/Calico/Cilium | `playbook-k3s.yml` | `cni`, `core` |
 | [`k3s_agent`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_agent/README.md) | Workers K3s | `playbook-k3s.yml` | `agent`, `core` |

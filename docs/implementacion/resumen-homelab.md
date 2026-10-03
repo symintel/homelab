@@ -12,7 +12,7 @@ al terminar la Fase 4 como mínimo; las fases 5 y 6 son opcionales.
 | [1 — Red](fase-1-red.md) | IP fija en `br0` (`192.168.20.5`, `.6`, `.7`) | `playbook-set-static-ip.yml` |
 | [2 — Incus](fase-2-incus.md) | Clúster HA, groups, UI, storage `dir` | `playbook-bootstrap.yml` + `playbook-incus-cluster.yml` |
 | [3 — K3s](fase-3-k3s.md) | Management cluster + ArgoCD controller; CNI **Flannel** (default) | `playbook-k3s.yml` |
-| [4 — GitOps](fase-4-gitops.md) | MetalLB, Ingress, storage, Dex/GitHub SSO | Argo CD + `playbook-dex-oauth-secrets.yml` |
+| [4 — GitOps](fase-4-gitops.md) | MetalLB, Gateway API, storage, Dex/GitHub SSO | Argo CD + `playbook-dex-oauth-secrets.yml` |
 | [5 — vCluster](fase-5-vcluster.md) *(opc.)* | Platform, kubeconfig web (connected cluster) | Application ArgoCD |
 | [6 — CAPN](fase-6-capn.md) *(opc.)* | Workload clusters sobre Incus | `clusterctl` + `capn-demo.yaml` |
 
@@ -36,18 +36,18 @@ al terminar la Fase 4 como mínimo; las fases 5 y 6 son opcionales.
 
 ## `/etc/hosts` en tu estación de trabajo
 
-Bloque completo tras Fase 4+ (`<IP-del-Ingress>` = EXTERNAL-IP del Ingress
-NGINX en MetalLB; `incus` siempre apunta a invincible):
+Bloque completo tras Fase 4+ (`<IP-del-Gateway>` = IP que MetalLB le da al
+Gateway `homelab`; `incus` siempre apunta a invincible):
 
 ```
-<IP-del-Ingress>  argocd.homelab.local vcluster.homelab.local
+<IP-del-Gateway>  argocd.homelab.local vcluster.homelab.local
 192.168.20.6      incus.homelab.local
 ```
 
-Obtén `<IP-del-Ingress>`:
+Obtén `<IP-del-Gateway>`:
 
 ```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl get gateway homelab -n gateway -o jsonpath='{.status.addresses[0].value}'
 ```
 
 Verificación:
@@ -107,7 +107,7 @@ Documentación: [Secretos OAuth](https://github.com/symintel/gitops/blob/main/ar
 
 Apps típicas en `Healthy` tras Fase 4:
 
-- `argocd-config`, `argocd-ingress`, `metallb`, `homelab-storage`, `ingress-nginx`, …
+- `argocd`, `argocd-route`, `metallb`, `homelab-storage`, `kong`, …
 - Opcionales (sync manual): `vcluster-platform`, `capn-demo`
 - CNI (solo si no usas Flannel embebido): `calico-operator` + `calico-config`, `canal` o `cilium` — **una** a la vez
 
