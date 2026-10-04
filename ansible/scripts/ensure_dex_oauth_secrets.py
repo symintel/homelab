@@ -3,7 +3,7 @@
 
 Genera cada campo listado en DEX_OAUTH_GENERATED_FIELDS (o
 dex_oauth_generated_fields en group_vars) si no existe en el ítem.
-Por defecto: INCUS_CLIENT_SECRET, VCLUSTER_CLIENT_SECRET.
+Por defecto: VCLUSTER_CLIENT_SECRET.
 Usado por playbook-dex-oauth-secrets.yml (Ansible).
 
 Uso:

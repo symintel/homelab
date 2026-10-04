@@ -2,7 +2,7 @@
 """Inyecta secretos Dex OAuth desde 1Password en argocd-secret.
 
 Invocado por playbook-dex-oauth-secrets.yml. Ejecutar ensure_dex_oauth_secrets
-antes si faltan INCUS_CLIENT_SECRET / VCLUSTER_CLIENT_SECRET.
+antes si faltan VCLUSTER_CLIENT_SECRET.
 """
 from __future__ import annotations
 

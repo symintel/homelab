@@ -65,17 +65,17 @@ Credenciales de **GitHub OAuth App** y clientes Dex **vCluster Platform** e
 | Origen | Campos |
 |---|---|
 | **GitHub** (OAuth App de la org `symintel`) | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` |
-| **Ansible** (`playbook-dex-oauth-secrets.yml`) | `VCLUSTER_CLIENT_SECRET`, `INCUS_CLIENT_SECRET` (genera en 1Password si faltan; aplica en Dex, Incus y/o Helm) |
+| **Ansible** (`playbook-dex-oauth-secrets.yml`) | `VCLUSTER_CLIENT_SECRET` (genera en 1Password si falta; aplica en Dex y Helm) |
 
-`INCUS_CLIENT_SECRET` **no** se crea en GitHub. Ansible lo genera en 1Password
-si falta y lo aplica en Dex e Incus.
+`VCLUSTER_CLIENT_SECRET` **no** se crea en GitHub: Ansible lo genera en 1Password si falta.
+Incus no usa secreto (es un cliente OIDC público en Dex).
 
 Se leen con el **[1Password Python SDK](https://github.com/1Password/onepassword-sdk-python)**
 y **DesktopAuth** en la estación donde la app 1Password está desbloqueada.
 
 Por defecto: **cuenta personal** (`ONEPASSWORD_ACCOUNT_NAME=Personal`), bóveda
 **`HomeLab`**, un ítem con campos `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
-`VCLUSTER_CLIENT_SECRET`, `INCUS_CLIENT_SECRET`. Probar: `ansible/scripts/test-1password.py`.
+`VCLUSTER_CLIENT_SECRET`. Probar: `ansible/scripts/test-1password.py`.
 
 Homepage `https://argocd.homelab.local` (informativa); Redirect URIs
 `https://argocd.homelab.local/api/dex/callback` (crítico).

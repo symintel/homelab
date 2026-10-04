@@ -88,14 +88,14 @@ kubectl get pods -n kube-system -l k8s-app=flannel
 |---|---|
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Dex → GitHub OAuth (manual en GitHub + 1Password) |
 | `VCLUSTER_CLIENT_SECRET` | Dex + Helm Platform (Ansible genera si falta) |
-| `INCUS_CLIENT_SECRET` | Dex + `incus config set oidc.*` (Ansible genera si falta) |
 
 Cuenta **Personal**, bóveda **`HomeLab`** (configurable vía env vars).
 Playbook: `playbook-dex-oauth-secrets.yml`.
 
 !!! important "Permisos por defecto"
-    Usuarios SSO (inicio de sesión único) **no ven nada** hasta asignar acceso en vCluster Platform o
-    `incus auth`. Ver [Fase 4](fase-4-gitops.md) y [Fase 5](fase-5-vcluster.md).
+    En vCluster Platform, los usuarios SSO (inicio de sesión único) **no ven nada** hasta asignarles
+    acceso. En Incus, quien entra por SSO tiene acceso completo: el control es que Dex solo deja
+    pasar al team `devops` de `symintel`. Ver [Fase 4](fase-4-gitops.md) y [Fase 5](fase-5-vcluster.md).
 
 Documentación: [Secretos OAuth](https://github.com/symintel/gitops/blob/main/argocd/secrets/1password.md)
 

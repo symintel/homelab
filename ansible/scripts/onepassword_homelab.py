@@ -40,11 +40,10 @@ DEX_OAUTH_FIELD_MAP: dict[str, str] = {
     "GITHUB_CLIENT_ID": "dex.github.clientId",
     "GITHUB_CLIENT_SECRET": "dex.github.clientSecret",
     "VCLUSTER_CLIENT_SECRET": "dex.vcluster.platform.clientSecret",
-    "INCUS_CLIENT_SECRET": "dex.incus.clientSecret",
 }
 
 # Generados por Ansible si faltan en 1Password (lista única — también en group_vars)
-DEFAULT_GENERATED_OAUTH_FIELDS = "INCUS_CLIENT_SECRET,VCLUSTER_CLIENT_SECRET"
+DEFAULT_GENERATED_OAUTH_FIELDS = "VCLUSTER_CLIENT_SECRET"
 
 
 def generated_oauth_fields() -> tuple[str, ...]:

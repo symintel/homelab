@@ -38,8 +38,32 @@ theme:
     - search.highlight
     - content.tooltips
 
+# Enlace del pie para volver a abrir el aviso de cookies (Material lo reconoce por #__consent).
+copyright: <a href="/privacidad/">Política de privacidad</a> · <a href="#__consent">Cambiar preferencias de cookies</a>
+
 extra_css:
   - stylesheets/extra.css
+
+# Google Analytics (gtag.js). Material genera el snippet por su cuenta a partir de esta opción.
+extra:
+  analytics:
+    provider: google
+    property: G-TD9S6WB8E2
+  # Aviso de consentimiento: Analytics no se carga hasta que el visitante acepte.
+  # La clave de "cookies" debe llamarse "analytics" para que Material la enlace con el proveedor.
+  consent:
+    title: Cookies y privacidad
+    description: >-
+      Usamos cookies para medir cómo se usa esta documentación (Google Analytics) y así
+      mejorarla, y para mostrar los datos del repositorio en GitHub. Solo se activan si las
+      aceptas; puedes cambiar tu decisión en cualquier momento desde el pie de página.
+      Detalle en la <a href="/privacidad/">política de privacidad</a>.
+    cookies:
+      analytics: Google Analytics
+    actions:
+      - accept
+      - reject
+      - manage
 
 markdown_extensions:
   - admonition
@@ -139,3 +163,4 @@ nav:
           - Hardening post-incidente: security/hardening-post-incidente.md
   - Labs:
       - Cinc/Chef: labs/cinc/index.md
+  - Privacidad: privacidad.md

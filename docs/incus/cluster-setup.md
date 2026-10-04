@@ -175,44 +175,52 @@ Acceso inicial: `https://incus.homelab.local:8443` → certificado de cliente.
 
 ### OIDC vía Dex (Fase 4)
 
-Tras [Fase 4 — Incus UI OIDC](../implementacion/fase-4-gitops.md#incus-ui-oidc):
+Tras [Fase 4 — Incus UI OIDC](../implementacion/fase-4-gitops.md#incus-ui-oidc), con la CA del
+HomeLab ya instalada en el nodo (ver el aviso de abajo):
 
 ```bash
 incus config set oidc.issuer=https://argocd.homelab.local/api/dex
 incus config set oidc.client.id=incus-ui
-incus config set oidc.client.secret=<INCUS_CLIENT_SECRET>
-incus config set oidc.groups.claim=groups
 ```
 
-`INCUS_CLIENT_SECRET` **no** se genera en GitHub. Ansible lo genera en
-1Password si falta y lo aplica en Dex e Incus (`--tags incus`).
+Incus (7.x) solo conoce cinco claves OIDC: `oidc.issuer`, `oidc.client.id`, `oidc.audience`,
+`oidc.claim` y `oidc.scopes`. No existen `oidc.client.secret` ni `oidc.groups.claim`: Incus no envía
+secreto, así que en Dex el cliente `incus-ui` es **público** (PKCE, `public: true`).
 
-### Permisos OIDC: denegar por defecto
+!!! warning "Incus tiene que confiar en la CA del HomeLab"
+    El certificado de Dex lo firma la CA propia del HomeLab (cert-manager). Si el nodo
+    no la conoce, Incus no puede validar al proveedor de identidad y el login falla. El
+    playbook (`--tags incus`, o solo `--tags incus_ca`) la instala en `invincible` y
+    reinicia `incus`. A mano, en el nodo:
 
-Con fine-grained auth (`incus auth`), un usuario OIDC **no tiene permisos** tras
-el primer login hasta que lo vincules a un grupo. Sin grupo mapeado, la UI carga
-pero no muestra instancias, proyectos ni configuración del clúster.
+    ```bash
+    kubectl -n cert-manager get secret homelab-ca -o jsonpath='{.data.ca\.crt}' | base64 -d \
+      | sudo tee /usr/local/share/ca-certificates/homelab-ca.crt > /dev/null
+    sudo update-ca-certificates
+    sudo systemctl restart incus
+    ```
 
-```bash
-incus auth group create homelab-admins
-incus auth group permission add homelab-admins server admin
-# Nombre = valor exacto del claim groups de Dex/GitHub (<org>:<team>)
-incus auth identity-provider-group create symintel:devops
-incus auth identity-provider-group group add symintel:devops homelab-admins
-```
+    Comprueba con `curl -s -o /dev/null -w "%{http_code} ssl_verify=%{ssl_verify_result}\n" https://argocd.homelab.local/api/dex/.well-known/openid-configuration`
+    (debe dar `200 ssl_verify=0`). Detalle en la
+    [Fase 4](../implementacion/fase-4-gitops.md#incus-ui-oidc).
+
+### Permisos de los usuarios OIDC
+
+Incus 7.x **no** trae `incus auth` (grupos y `identity-provider-group` son de LXD). Con OIDC:
 
 | Escenario | Resultado |
 |---|---|
-| Login SSO, sin grupo IdP mapeado | Autenticado, **sin acceso** a recursos |
-| Miembro del team `devops` de la org `symintel` (grupo `symintel:devops` → `homelab-admins`) | Admin del clúster Incus |
-| Operador en proyecto concreto | Crear grupo con permisos `project` y mapear equipo GitHub |
+| Miembro del team `devops` de la org `symintel` | Dex lo deja pasar y, con la configuración por defecto de Incus, tiene **acceso completo** |
+| Cuenta que no está en ese team | Dex rechaza el login: nunca llega a Incus |
 
-Comprobar permisos efectivos de un usuario: `incus auth identity info` (como ese usuario).
+El control de acceso es, entonces, la pertenencia al team `devops` (filtro `orgs`/`teams` del
+conector GitHub en `dex.config`). Para permisos granulares (por proyecto, solo lectura) Incus
+usa [OpenFGA](https://linuxcontainers.org/incus/docs/main/authentication/), que no está
+configurado en el HomeLab.
 
 Referencias:
 
 - [Incus OIDC](https://linuxcontainers.org/incus/docs/main/authentication/#openid-connect-oidc-authentication)
-- [Autorización LXD/Incus](https://canonical.com/lxd/docs/default/explanation/authorization/) (`incus auth`)
 
 ## Backup y snapshots (opcional)
 

@@ -201,17 +201,27 @@ Continúa en [Fase 4 — GitOps](../implementacion/fase-4-gitops.md).
 ## Playbook OAuth Dex (Fase 4)
 
 [`playbook-dex-oauth-secrets.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-dex-oauth-secrets.yml) —
-genera `INCUS_CLIENT_SECRET` y `VCLUSTER_CLIENT_SECRET` en 1Password si faltan,
-aplica `argocd-secret` y opcionalmente configura Incus OIDC (OpenID Connect) en invincible.
+genera `VCLUSTER_CLIENT_SECRET` en 1Password si falta,
+aplica `argocd-secret` y configura Incus OIDC (OpenID Connect) en invincible. Necesita
+`KUBECONFIG` exportado y la app de 1Password desbloqueada.
+
+| Tag | Qué hace |
+|---|---|
+| `ensure` | Genera en 1Password el secreto que falte (`VCLUSTER_CLIENT_SECRET`) |
+| `argocd` | Aplica las claves `dex.*` en `argocd-secret` y reinicia Dex |
+| `incus` | Instala la CA del HomeLab en invincible, **reinicia `incus`** (si la CA cambió) y configura `oidc.issuer` y `oidc.client.id` |
+| `incus_ca` | Solo instala la CA del HomeLab en invincible (y reinicia `incus` si cambió) |
+| `vcluster` | Aplica `VCLUSTER_CLIENT_SECRET` en vCluster Platform (requiere `apply_vcluster: true`) |
 
 ```bash
 cd ansible
-ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml
-ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml --tags incus,incus_auth \
-  -e dex_oauth.apply_incus=true -e dex_oauth.configure_incus_auth=true
+ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml --tags ensure,argocd,incus
+ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml --tags incus_ca
 ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml --tags vcluster \
   -e dex_oauth.apply_vcluster=true
 ```
+
+`apply_incus` está en `true` por defecto en `group_vars`.
 
 Variables: [`group_vars/dex_oauth_secrets.yml`](https://github.com/symintel/homelab/blob/main/ansible/group_vars/dex_oauth_secrets.yml).
 

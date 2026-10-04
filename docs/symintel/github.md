@@ -69,7 +69,7 @@ export ONEPASSWORD_ACCOUNT_NAME="Mi Cuenta"  # tu cuenta
 | `symintel-arc-runners` | Nota segura | `app_id`, `installation_id`, `private_key` | ARC (registro del runner) |
 | `symintel-argocd` | Nota segura | `app_id`, `installation_id`, `private_key` | ArgoCD lee `symintel/gitops` (`argocd/repo-gitops`) |
 | `sealed-secrets` | Nota segura | `certificate`, `private_key` *(opcional hasta la Fase 6)* | Llave de cifrado de Sealed Secrets: sobrevive si reinstalas K3s |
-| `symintel-dex` | Nota segura | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (+ `INCUS_CLIENT_SECRET`, `VCLUSTER_CLIENT_SECRET`, que genera el playbook) | Dex (login con GitHub) |
+| `symintel-dex` | Nota segura | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (+ `VCLUSTER_CLIENT_SECRET`, que genera el playbook) | Dex (login con GitHub) |
 | `ftp-<repo>` | Nota segura | `dev_host`, `dev_user`, `dev_password`, `dev_remote_dir`, `prod_host`, `prod_user`, `prod_password`, `prod_remote_dir` | OpenTofu → secrets FTP de `<repo>` (`TF_VAR_ftp`) |
 
 ### Cómo crear un item con campos propios
@@ -221,15 +221,14 @@ con estos dos campos:
 | `GITHUB_CLIENT_ID` | Texto | Client ID | Página de la OAuth App: línea **Client ID** |
 | `GITHUB_CLIENT_SECRET` | Contraseña | Client secret | Misma página → **Generate a new client secret**. GitHub lo muestra **una sola vez**: cópialo en ese momento |
 
-Así queda el item (los dos últimos campos los agrega solo
-`playbook-dex-oauth-secrets.yml` la primera vez que corre: son los secretos
-de los clientes vCluster e Incus UI de Dex, no vienen de GitHub):
+Así queda el item (el último campo lo agrega solo
+`playbook-dex-oauth-secrets.yml` la primera vez que corre: es el secreto
+del cliente vCluster de Dex, no viene de GitHub):
 
 ```text
 symintel-dex              (Nota segura · bóveda HomeLab)
 ├── GITHUB_CLIENT_ID      Ov23li…
 ├── GITHUB_CLIENT_SECRET  ••••••••
-├── INCUS_CLIENT_SECRET   ••••••••   (lo genera el playbook)
 └── VCLUSTER_CLIENT_SECRET ••••••••  (lo genera el playbook)
 ```
 

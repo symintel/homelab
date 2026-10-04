@@ -335,8 +335,8 @@ cd ansible
 ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml
 ```
 
-Los campos `INCUS_CLIENT_SECRET` y `VCLUSTER_CLIENT_SECRET` se generan en
-1Password automáticamente si no existen. Crea antes en 1Password (manual)
+El campo `VCLUSTER_CLIENT_SECRET` se genera en
+1Password automáticamente si no existe. Crea antes en 1Password (manual)
 `GITHUB_CLIENT_ID` y `GITHUB_CLIENT_SECRET` desde la OAuth App de GitHub.
 
 Alternativa script Python:
@@ -350,65 +350,118 @@ kubectl rollout restart deployment argocd-dex-server -n argocd
 Connector **GitHub** (solo el team `devops` de la org `symintel`) y staticClients **vCluster** e **Incus UI**
 en [`dex.config`](https://github.com/symintel/gitops/blob/main/argocd/config/dex.config).
 
-`INCUS_CLIENT_SECRET` y `VCLUSTER_CLIENT_SECRET` **no** vienen de GitHub.
-Ansible los genera en 1Password si faltan y los aplica según destino:
+`VCLUSTER_CLIENT_SECRET` **no** viene de GitHub.
+Ansible lo genera en 1Password si falta y lo aplica según destino. Incus **no usa secreto**:
+es un cliente OIDC público (PKCE) en Dex.
 
 | Campo | Destinos (tags Ansible) |
 |---|---|
-| `INCUS_CLIENT_SECRET` | `argocd-secret` (`argocd`) + Incus OIDC (`incus`) |
 | `VCLUSTER_CLIENT_SECRET` | `argocd-secret` (`argocd`) + Helm Platform (`vcluster`) |
+
+### Probar el login: URLs y qué esperar
+
+Primero comprueba que las cuatro claves llegaron a `argocd-secret` y que Dex se reinició:
+
+```bash
+kubectl -n argocd get secret argocd-secret -o jsonpath='{.data}' | python3 -c "import sys,json;print(list(json.load(sys.stdin)))"
+kubectl -n argocd get pods -l app.kubernetes.io/name=argocd-dex-server
+```
+
+Tienen que aparecer `dex.github.clientId`, `dex.github.clientSecret` y
+`dex.vcluster.platform.clientSecret`. Las URLs necesitan el [DNS de `*.homelab.local`](#48-dns-de-homelablocal)
+(o `/etc/hosts`); el certificado lo firma la CA del HomeLab, así que el navegador avisa hasta que la
+importes (y `curl` necesita `-k`).
+
+| Qué probar | URL | Qué debes ver |
+|---|---|---|
+| **ArgoCD** (UI) | `https://argocd.homelab.local` | Pantalla de login con el botón **Log in via GitHub**. Al pulsarlo pasa por GitHub y vuelve a ArgoCD con las Applications |
+| ArgoCD (HTTP) | `http://argocd.homelab.local` | Redirige (`301`) a la versión HTTPS |
+| ArgoCD (API) | `https://argocd.homelab.local/api/version` | `{"Version":"v3.x.x"}`: el servidor responde a través del Gateway |
+| **Dex** (descubrimiento) | `https://argocd.homelab.local/api/dex/.well-known/openid-configuration` | JSON con `"issuer": "https://argocd.homelab.local/api/dex"` |
+| Dex (callback) | `https://argocd.homelab.local/api/dex/callback` | **No se abre a mano.** Es la URL que tiene que estar en *Redirect URIs* de la OAuth App de GitHub |
+| **vCluster Platform** | `https://vcluster.homelab.local` | Login SSO con GitHub (Fase 5; antes no existe) |
+| **Incus UI** | `https://incus.homelab.local:8443` | **Login with SSO** → GitHub (ver más abajo) |
+
+Desde la terminal:
+
+```bash
+curl -sk https://argocd.homelab.local/api/version
+curl -sk https://argocd.homelab.local/api/dex/.well-known/openid-configuration
+curl -s -o /dev/null -w "%{http_code} -> %{redirect_url}\n" http://argocd.homelab.local/
+```
+
+| Si ves… | Causa | Qué hacer |
+|---|---|---|
+| GitHub responde **404** y la URL trae `client_id=.github.clientId` | Faltan las claves `dex.*` en `argocd-secret`: Dex no pudo sustituir `$dex.github.clientId` | Corre el playbook de arriba (`--tags argocd`) y vuelve a probar |
+| GitHub dice **redirect_uri mismatch** | *Redirect URIs* de la OAuth App distinto | Debe ser exactamente `https://argocd.homelab.local/api/dex/callback` |
+| El login termina bien pero ArgoCD **no muestra Applications** | Tu cuenta no está en el team `devops` de `symintel` | Agrégala al team; el claim `groups` es `symintel:devops` |
+| `invalid_client` o `bad credentials` | `GITHUB_CLIENT_SECRET` incorrecto o rotado | Actualiza el campo en 1Password y vuelve a correr el playbook |
 
 ### Incus UI OIDC
 
 Requisitos: UI instalada en [Fase 2](fase-2-incus.md#ui-de-administracion),
 `argocd` Healthy, secretos inyectados y Dex reiniciado.
 
-**Ansible** (recomendado) — en `group_vars/dex_oauth_secrets.yml` activa
-`apply_incus: true` y `configure_incus_auth: true`, luego:
+Incus (7.x) solo conoce cinco claves OIDC: `oidc.issuer`, `oidc.client.id`, `oidc.audience`,
+`oidc.claim` y `oidc.scopes`. **No** tiene `oidc.client.secret`, ni `oidc.groups.claim`, ni el
+comando `incus auth` (esas son de LXD). Por eso en Dex el cliente `incus-ui` es **público**
+(`public: true`, PKCE, sin secreto): está en [`dex.config`](https://github.com/symintel/gitops/blob/main/argocd/config/dex.config).
+
+**Ansible** (recomendado) — `group_vars/dex_oauth_secrets.yml` ya trae `apply_incus: true`. Con
+las claves `dex.*` ya cargadas ([Probar el login](#probar-el-login-urls-y-que-esperar)), corre:
 
 ```bash
+export KUBECONFIG=~/.kube/homelab-k3s.yaml
+export ONEPASSWORD_ACCOUNT_NAME="Mi Cuenta"
 cd ansible
-ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml --tags ensure,argocd,incus,incus_auth
+ansible-playbook -i inventory.ini playbook-dex-oauth-secrets.yml --tags ensure,argocd,incus
 ```
 
-Eso genera `INCUS_CLIENT_SECRET` en 1Password si falta, lo aplica en
-`argocd-secret`, reinicia Dex y configura OIDC (OpenID Connect) + grupos en **invincible**.
+Eso aplica las claves en `argocd-secret`, reinicia Dex, instala la CA del HomeLab en **invincible**
+y configura `oidc.issuer` y `oidc.client.id` en Incus.
 
-Alternativa manual en el nodo bootstrap (**invincible**):
+!!! warning "Incus tiene que confiar en la CA del HomeLab"
+    Incus valida el certificado HTTPS de Dex (`https://argocd.homelab.local/api/dex`), que
+    firma la CA propia del HomeLab. Si `invincible` no la conoce, el login falla (`curl` desde
+    el nodo da `ssl_verify=20`). El playbook, con el tag `incus`, la lee del clúster
+    (`kubectl -n cert-manager get secret homelab-ca`), la instala en
+    `/usr/local/share/ca-certificates/` y **reinicia el servicio `incus`** (las instancias
+    siguen corriendo; la API queda unos segundos sin responder). Solo ese paso:
+    `--tags incus_ca`.
+
+Comprueba en el nodo que ya confía y que OIDC quedó configurado:
+
+```bash
+curl -s -o /dev/null -w "%{http_code} ssl_verify=%{ssl_verify_result}\n" https://argocd.homelab.local/api/dex/.well-known/openid-configuration
+incus config get oidc.issuer
+incus config get oidc.client.id
+```
+
+Deben dar `200 ssl_verify=0`, `https://argocd.homelab.local/api/dex` e `incus-ui`.
+
+Alternativa manual en el nodo bootstrap (**invincible**), después de instalar la CA
+([manual](../incus/cluster-setup.md#oidc-via-dex-fase-4)):
 
 ```bash
 incus config set oidc.issuer=https://argocd.homelab.local/api/dex
 incus config set oidc.client.id=incus-ui
-incus config set oidc.client.secret=<INCUS_CLIENT_SECRET>
-incus config set oidc.groups.claim=groups
 ```
 
-#### Permisos: denegar por defecto
+#### Quién puede entrar y qué puede hacer
 
-Con OIDC activo, un usuario que inicia sesión **no ve ni puede gestionar nada**
-hasta que lo asignes a un grupo con permisos. Solo los miembros de grupos IdP
-mapeados reciben acceso.
-
-Crea un grupo de administradores y mapéalo al claim `groups` que emite Dex/GitHub
-(con el connector actual: `symintel:devops`, formato `<org>:<team>`):
-
-```bash
-incus auth group create homelab-admins
-incus auth group permission add homelab-admins server admin
-# Nombre = valor exacto del claim groups en el token OIDC (<org>:<team>)
-incus auth identity-provider-group create symintel:devops
-incus auth identity-provider-group group add symintel:devops homelab-admins
-```
-
-Para dar acceso limitado (solo un proyecto, solo viewer, etc.), crea más grupos
-con permisos granulares y mapéalos a equipos de GitHub u otros claims de Dex.
-Ver [Autorización Incus](../incus/cluster-setup.md#permisos-oidc-denegar-por-defecto).
+- **Quién inicia sesión:** el conector GitHub de Dex solo deja pasar a miembros del team
+  `devops` de la org `symintel` (`orgs`/`teams` en `dex.config`). Quien no está en el team no
+  llega a Incus.
+- **Qué puede hacer:** con la configuración por defecto de Incus, cualquier usuario que se
+  autentica con el proveedor OIDC tiene **acceso completo** al servidor. Para permisos
+  granulares (solo un proyecto, solo lectura) Incus usa [OpenFGA](https://linuxcontainers.org/incus/docs/main/authentication/)
+  como motor de autorización: no está configurado en el HomeLab. Mientras tanto, el control es
+  la pertenencia al team `devops`.
 
 Verificar:
 
-- Usuario **sin** grupo mapeado → login SSO OK, **sin recursos visibles**
-- Usuario del team `devops` de `symintel` → acceso admin del clúster
-- `https://incus.homelab.local:8443` → **Login with SSO** → GitHub
+- `https://incus.homelab.local:8443` → **Login with SSO** → GitHub → entras a la UI de Incus
+- Una cuenta que **no** está en el team `devops` → GitHub/Dex rechaza el login antes de llegar a Incus
 
 ### Flujo SSO
 
@@ -573,6 +626,7 @@ workflow de CI/CD.
 | `homelab-root` `ComparisonError` / repo no accesible | Falta `argocd/repo-gitops`, o la App `symintel-argocd` no está instalada en `symintel/gitops`: re-correr `playbook-platform-secrets.yml` |
 | `arc-runners` `OutOfSync` y el pod del listener se reinicia cada pocos minutos | ArgoCD poda en bucle los recursos que crea el controlador de ARC (`AutoscalingListener`, `Role`, `RoleBinding`: copian la etiqueta `app.kubernetes.io/instance`). Se corrige con `application.resourceTrackingMethod: annotation` en `argocd-cm` (ya está en `gitops/argocd/config`). Comprueba: `kubectl -n argocd get cm argocd-cm -o jsonpath='{.data.application\.resourceTrackingMethod}'` → `annotation`; si no, sincroniza `argocd` y reinicia el controlador: `kubectl -n argocd rollout restart statefulset argocd-application-controller` |
 | Apps en `Error`: `ComparisonError … terminatingReplicas: field not declared in schema` | ArgoCD es anterior a la 3.5 y el clúster tiene Kubernetes 1.34 o más nuevo: [Actualizar ArgoCD](../operacion/actualizar-argocd.md#la-primera-vez-actualizar-a-mano-y-despues-activar-la-app) |
+| Login con GitHub da 404 (`client_id=.github.clientId`) | Faltan `dex.*` en `argocd-secret`: corre `playbook-dex-oauth-secrets.yml --tags argocd` ([4.7](#47-secretos-oauth-github-vcluster-incus-ui)) |
 | Runner no aparece en GitHub | `kubectl logs -n arc-systems` del listener; Secret `arc-runners/arc-runners-github-app` (App instalada en `symintel`) |
 | Pipeline `tofu` sin runner o sin credenciales | Runner `arc-runners` Online; Secrets `symintel-terraform-app`/`tofu-vars` en `arc-runners` |
 | Longhorn pending | Etiquetas Longhorn ([playbook-options](../k3s/playbook-options.md)) |

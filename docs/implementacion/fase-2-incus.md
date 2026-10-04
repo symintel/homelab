@@ -173,8 +173,8 @@ Ansible instala `incus-ui-canonical` y `core.https_address` en **invincible**
 !!! note "OIDC con Dex"
     El login SSO (GitHub vía Dex) se configura en
     **[Fase 4 — Incus UI OIDC](fase-4-gitops.md#incus-ui-oidc)**.
-    Por defecto los usuarios OIDC (OpenID Connect) **no ven nada** hasta asignarles un grupo
-    (`incus auth`).
+    Solo entra el team `devops` de `symintel` (filtro de Dex) y, con la configuración por defecto
+    de Incus, esos usuarios OIDC (OpenID Connect) tienen acceso completo.
 
 Profundización: [Clúster Incus — UI](../incus/cluster-setup.md#ui-de-administracion)
 · [Backup y snapshots (opcional)](../incus/cluster-setup.md#backup-y-snapshots-opcional)
