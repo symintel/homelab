@@ -17,12 +17,14 @@ permissions:
   pages: write
   id-token: write
 
+# Un run nuevo cancela el anterior (en curso o en cola) para que solo se publique lo último de main.
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     runs-on: arc-runners
     steps:
       - name: Checkout
@@ -48,6 +50,7 @@ jobs:
           path: site
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: arc-runners
     environment:

@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Un push nuevo al mismo PR cancela la corrida anterior.
+concurrency:
+  group: docs-lint-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: arc-runners
