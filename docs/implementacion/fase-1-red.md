@@ -10,6 +10,39 @@ Por qué el HomeLab exige IP fija: Incus graba `cluster.https_address`, K3s usa
 la IP como identidad del kubelet y CAPN referencia `https://<IP>:8443` en
 secretos.
 
+!!! abstract "Aprende esta fase"
+    **En simple:** una IP fija es tu dirección postal: si cambia cada día, nadie te encuentra. Un
+    **bridge** es como un enchufe múltiple virtual: deja que el equipo y las máquinas virtuales
+    compartan la misma conexión a la red.
+
+    **Conceptos clave**
+
+    - **IP estática o dinámica:** una IP estática se queda igual; una dinámica la reparte el router (DHCP, Dynamic Host Configuration Protocol) y puede cambiar.
+    - **Máscara y CIDR (Classless Inter-Domain Routing):** la notación `/22` indica cuántas direcciones comparten la red.
+    - **Gateway (puerta de enlace):** el equipo, normalmente el router, por donde se sale a otras redes.
+    - **DNS (Domain Name System):** la "guía telefónica" que traduce nombres a IP.
+    - **Bridge `br0`:** la interfaz virtual que comparten el nodo, Incus y K3s.
+
+    **Reto práctico (solo lectura):** en un nodo, encuentra su IP, su máscara y su gateway.
+
+    ```bash
+    ip -br addr show br0
+    ip route | grep default
+    ```
+
+    ??? question "¿Por qué el HomeLab necesita IP fija en los nodos?"
+        Porque Incus guarda la dirección del clúster, K3s usa la IP como identidad del nodo y otros
+        componentes la referencian: si cambiara, el clúster dejaría de encontrarse.
+
+    ??? question "¿Qué es un bridge y para qué sirve aquí?"
+        Es una interfaz virtual que conecta varias interfaces en una sola red. Permite que las
+        instancias de Incus y los pods usen la red física del nodo.
+
+    ??? question "En `192.168.20.5/22`, ¿qué parte es la dirección y cuál la máscara?"
+        `192.168.20.5` es la dirección y `/22` indica que los primeros 22 bits son la red.
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid

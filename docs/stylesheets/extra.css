@@ -265,3 +265,120 @@
   white-space: nowrap;
   word-break: normal;
 }
+
+/* ---------- "Aprende con IA" (docs/javascripts/ai-tutor.js) ---------- */
+.md-typeset .ai-tutor-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.8rem;
+  padding: 0.12rem 0.65rem;
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+  color: var(--md-primary-fg-color);
+  background: transparent;
+  border: 1px solid var(--md-primary-fg-color);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.md-typeset .ai-tutor-btn:hover,
+.md-typeset .ai-tutor-btn[aria-expanded="true"] {
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+}
+.md-typeset .ai-tutor-btn:focus-visible,
+.md-typeset .ai-tutor-action:focus-visible,
+.md-typeset .ai-tutor-level-opt:focus-visible,
+.ai-tutor-toast button:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 2px;
+}
+.md-typeset .ai-tutor-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.2rem 0 0.8rem;
+  padding: 0.5rem;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+}
+.md-typeset .ai-tutor-menu[hidden] { display: none; }
+.md-typeset .ai-tutor-action {
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+.md-typeset .ai-tutor-action:hover {
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-fg-color);
+}
+.md-typeset .ai-tutor-level {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.2rem 0 1.2rem;
+  font-size: 0.72rem;
+}
+.md-typeset .ai-tutor-level-label { color: var(--md-default-fg-color--light); }
+.md-typeset .ai-tutor-level-opt {
+  padding: 0.15rem 0.7rem;
+  font: inherit;
+  color: var(--md-default-fg-color);
+  background: transparent;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.md-typeset .ai-tutor-level-opt[aria-checked="true"] {
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+}
+.md-typeset .ai-tutor-level-help { margin-left: 0.3rem; }
+.ai-tutor-toast {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 10;
+  box-sizing: border-box;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.8rem 1rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--md-primary-fg-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.4rem 1.2rem rgba(0, 0, 0, 0.25);
+}
+.ai-tutor-toast[hidden] { display: none; }
+.ai-tutor-toast p { margin: 0 0 0.4rem; font-weight: 600; }
+.ai-tutor-toast pre {
+  margin: 0.4rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.68rem;
+  user-select: all;
+}
+.ai-tutor-toast-close {
+  margin-top: 0.5rem;
+  padding: 0.15rem 0.7rem;
+  font: inherit;
+  color: var(--md-default-fg-color);
+  background: transparent;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+@media print {
+  .ai-tutor-btn, .ai-tutor-menu, .ai-tutor-level, .ai-tutor-toast { display: none !important; }
+}

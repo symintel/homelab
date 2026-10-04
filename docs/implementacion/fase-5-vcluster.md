@@ -11,6 +11,29 @@ Un **vCluster** expone una API (Application Programming Interface) Kubernetes ai
 [vCluster Platform](https://www.vcluster.com/docs/platform/) añade UI, SSO y
 kubeconfig desde el navegador.
 
+!!! abstract "Aprende esta fase"
+    **En simple:** un vCluster es un departamento dentro del departamento: un Kubernetes virtual,
+    aislado, que vive dentro de otro. Cada equipo recibe "su propio clúster" sin pagar el costo de
+    montar uno nuevo.
+
+    **Conceptos clave**
+
+    - **Clúster virtual:** una API de Kubernetes aislada que corre como pods en el clúster anfitrión.
+    - **Multi-tenancy (varios inquilinos):** compartir una misma infraestructura entre equipos sin que se vean entre sí.
+    - **Kubeconfig:** el archivo que da acceso a un clúster; la plataforma permite descargarlo desde el navegador.
+    - **SSO (inicio de sesión único) y OIDC (OpenID Connect):** iniciar sesión con GitHub a través de Dex, sin otra contraseña.
+
+    **Reto práctico (solo lectura):** lee el flujo de inicio de sesión de la Fase 4 y explica con tus propias palabras,
+    en cuatro pasos, qué pasa cuando alguien entra con GitHub.
+
+    ??? question "¿Qué ventaja tiene un vCluster frente a una máquina virtual completa?"
+        Arranca en segundos y gasta menos recursos, porque comparte el kernel y la infraestructura del anfitrión.
+
+    ??? question "¿Qué papel cumple Dex en el login?"
+        Es el intermediario: recibe el inicio de sesión de GitHub y se lo traduce a las aplicaciones (ArgoCD, Platform, Incus).
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid

@@ -10,6 +10,38 @@ Clúster **Incus** de 3 nodos con quorum, cluster groups por arquitectura y
 Incus como **hipervisor compartido**: quorum dqlite en 3 miembros, cluster
 groups para dirigir cargas x86 vs ARM64 (arquitectura ARM de 64 bits), y scheduler manual para proteger RAM.
 
+!!! abstract "Aprende esta fase"
+    **En simple:** Incus es un edificio de departamentos. Cada departamento es una **instancia**:
+    un contenedor (un cuarto ligero que comparte las instalaciones del edificio) o una máquina virtual
+    (un departamento completo, con su propia cocina). Con tres edificios coordinados, si uno cierra los otros dos siguen funcionando.
+
+    **Conceptos clave**
+
+    - **Contenedor y máquina virtual:** el contenedor es más ligero; la VM (Virtual Machine) aísla más.
+    - **Clúster y quórum:** con 3 miembros, el clúster decide por mayoría y tolera la caída de uno.
+    - **Cluster group:** una etiqueta para dirigir cargas a un tipo de nodo (por ejemplo, solo ARM64).
+    - **x86_64 y ARM64:** dos arquitecturas de procesador distintas; no se mezclan en una misma instancia.
+    - **Scheduler manual:** el nodo `oliver` no recibe instancias solo; protege su memoria.
+
+    **Reto práctico (solo lectura):** mira los miembros del clúster y sus instancias.
+
+    ```bash
+    incus cluster list
+    incus list -c ns4
+    ```
+
+    ??? question "¿Por qué un clúster de tres miembros y no de dos?"
+        Con dos, si uno cae no hay mayoría y el clúster se bloquea. Con tres, la mayoría son dos y
+        puede seguir funcionando.
+
+    ??? question "¿Cuándo prefieres un contenedor y cuándo una VM?"
+        Contenedor para cargas Linux ligeras y rápidas; VM cuando necesitas otro kernel o más aislamiento.
+
+    ??? question "¿Para qué sirven los cluster groups?"
+        Para decidir en qué nodos corre una instancia, por ejemplo mantener las cargas ARM64 en `deborah`.
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid

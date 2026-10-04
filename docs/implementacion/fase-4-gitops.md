@@ -12,6 +12,41 @@ GitHub OAuth, y waves de operaciones.
 `kubectl apply` (ApplicationSet `homelab-root`) y Argo CD sincroniza el resto. Separación clara:
 Ansible bootstrap vs GitOps continuo.
 
+!!! abstract "Aprende esta fase"
+    **En simple:** Git es la receta aprobada y Argo CD es el chef que compara la cocina con la receta
+    y corrige cualquier diferencia. Si alguien cambia algo a mano en el clúster, Argo CD lo deja
+    como dice Git. El equipo no "ejecuta comandos": cambia la receta.
+
+    **Conceptos clave**
+
+    - **GitOps:** el repositorio es la fuente de verdad; el clúster converge a lo que dice.
+    - **Application y sync:** Argo CD vigila una carpeta de Git y la aplica; "Synced" significa que coinciden.
+    - **Drift y self-heal:** drift es la diferencia entre Git y el clúster; el self-heal la corrige solo.
+    - **Olas (sync-waves):** el orden de despliegue; la base (red, certificados) va antes que las aplicaciones.
+    - **Secretos fuera de Git:** las claves viven en 1Password y se entregan al clúster sin subirlas al repositorio.
+    - **Gateway y TLS (Transport Layer Security):** la puerta de entrada HTTPS y el certificado que la protege.
+
+    **Reto práctico (solo lectura):** compara el estado del clúster con lo que declara Git.
+
+    ```bash
+    kubectl -n argocd get applications
+    kubectl get gateway homelab -n gateway
+    ```
+
+    Abre `gateway/kong/gateway.yaml` en el repositorio `gitops` y busca los mismos puertos y el
+    nombre `homelab` que ves en el clúster.
+
+    ??? question "¿Qué significa que una Application esté Synced y Healthy?"
+        Synced: lo que hay en el clúster coincide con Git. Healthy: los recursos funcionan.
+
+    ??? question "¿Por qué los secretos no se guardan en Git?"
+        Porque cualquiera con acceso al repositorio los vería, y el historial de Git conserva todo lo que se subió.
+
+    ??? question "¿Qué hace el self-heal si alguien cambia algo a mano?"
+        Detecta la diferencia con Git y vuelve a aplicar lo declarado.
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid

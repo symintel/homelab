@@ -11,6 +11,40 @@ Cómo Ansible usa un **inventario** como fuente de verdad de hosts, y por qué
 un **discovery** opcional evita suposiciones sobre RAM, disco y arquitectura
 al elegir roles (control-plane, Longhorn, etc.).
 
+!!! abstract "Aprende esta fase"
+    **En simple:** Ansible es como una lista de tareas que entregas a varios ayudantes: todos la
+    ejecutan igual, sin que tengas que ir uno por uno. El **inventario** es la agenda con el nombre,
+    la dirección y el rol de cada ayudante (cada nodo).
+
+    **Conceptos clave**
+
+    - **Inventario:** el archivo que dice qué equipos existen y cómo conectarse a ellos.
+    - **Playbook:** la receta de tareas que Ansible aplica a esos equipos.
+    - **Idempotencia:** repetir un playbook deja el mismo resultado; no rompe lo que ya estaba bien.
+    - **Modo simulación (`-C`):** muestra qué cambiaría sin tocar nada.
+    - **SSH (Secure Shell):** el canal cifrado con el que Ansible entra a cada nodo.
+
+    **Reto práctico (seguro, solo lectura):** comprueba que Ansible llega a los tres nodos y ve qué cambiaría
+    un playbook sin aplicarlo.
+
+    ```bash
+    ansible -i ansible/inventory.ini incus_cluster -m ping
+    ansible-playbook -i ansible/inventory.ini ansible/playbook-discovery.yml -C
+    ```
+
+    ??? question "¿Para qué sirve un inventario?"
+        Para que Ansible sepa qué equipos administrar, cómo llegar a ellos y a qué grupo pertenece cada uno.
+        Es la fuente de verdad de los nodos.
+
+    ??? question "¿Por qué se puede repetir un playbook idempotente sin miedo?"
+        Porque cada tarea revisa primero el estado actual y solo cambia lo que falta. Si todo ya está bien,
+        no hace nada.
+
+    ??? question "¿Qué diferencia hay entre ejecutar un playbook y ejecutarlo con `-C`?"
+        Con `-C` Ansible simula: informa qué cambiaría pero no modifica los equipos.
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid

@@ -1,5 +1,13 @@
 ---
 # Opciones del playbook K3s (bootstrap). Ver docs/k3s/playbook-options.md
+#
+# Para cambiar una opción puntual SIN editar este archivo, usa estas variables de nivel superior
+# con -e (ejemplo: ansible-playbook ... -e k3s_cni=canal). NO uses -e k3s_install.x.y=valor:
+# Ansible crea una variable nueva con puntos en el nombre y la ignora; el playbook lo detecta y falla.
+k3s_cni: calico                    # flannel | canal | calico | cilium
+k3s_gitops_argocd_enabled: true    # instala ArgoCD (rol k3s_argocd)
+k3s_node_labels_enabled: true      # etiquetas de nodos (rol k3s_node_labels)
+
 k3s_install:
   core:
     # Canal "stable" de K3s (https://update.k3s.io/v1-release/channels/stable). El SUC
@@ -11,7 +19,7 @@ k3s_install:
       - servicelb
     cluster_cidr: "10.42.0.0/16"
     service_cidr: "10.43.0.0/16"
-    cni: calico  # flannel | canal | calico | cilium
+    cni: "{{ k3s_cni }}"  # se elige con k3s_cni (arriba)
     flannel_backend: vxlan  # solo si cni == flannel: vxlan | host-gw | wireguard-native
     write_kubeconfig_mode: "600"
     tls_sans_extra: []
@@ -25,14 +33,14 @@ k3s_install:
     image_version: v1.2.4
 
   gitops_argocd:
-    enabled: true
+    enabled: "{{ k3s_gitops_argocd_enabled | bool }}"
     # latest = la última versión estable (el rol la resuelve al correr). Después, ArgoCD se
     # actualiza solo: la Application "argocd" de gitops sigue el tag stable del repo oficial.
     version: latest
     gitops_repo_url: https://github.com/symintel/gitops
 
   node_labels:
-    enabled: true
+    enabled: "{{ k3s_node_labels_enabled | bool }}"
     at_join: false
 
   traefik_cleanup:

@@ -38,19 +38,48 @@
 
     - name: Aplicar Canal
       ansible.builtin.command: k3s kubectl apply -f /tmp/canal.yaml
-      register: canal_apply
-      changed_when: "'created' in canal_apply.stdout or 'configured' in canal_apply.stdout"
+      register: k3s_cni_canal_apply
+      changed_when: "'created' in k3s_cni_canal_apply.stdout or 'configured' in k3s_cni_canal_apply.stdout"
       when: not ansible_check_mode
 
-- name: Instalar Calico (operator + custom resources)
-  when: k3s_install.core.cni == 'calico'
+# Calico lo administra ArgoCD una vez adoptado (gitops: cni/calico-operator y cni/calico).
+# Este rol solo hace el bootstrap (ArgoCD necesita red de pods para arrancar): si el
+# Installation ya lo sigue ArgoCD, no se toca, para no pelear con él por la propiedad de los campos.
+- name: Detectar si ArgoCD ya administra Calico
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - get
+      - installation
+      - default
+      - -o
+      - jsonpath={.metadata.annotations.argocd\.argoproj\.io/tracking-id}
+  register: k3s_cni_calico_tracking
+  changed_when: false
+  failed_when: false
+  when: k3s_install.core.cni == 'calico' and not ansible_check_mode
+
+- name: Instalar Calico (CRDs + operator + custom resources)
+  when:
+    - k3s_install.core.cni == 'calico'
+    - ansible_check_mode or (k3s_cni_calico_tracking.stdout | default('') | length == 0)
   block:
+    # Desde Calico v3.31 los CRDs van aparte del operador.
+    - name: Aplicar CRDs de Calico
+      ansible.builtin.command: >-
+        k3s kubectl apply --server-side --force-conflicts
+        -f {{ k3s_cni_calico_crds_url }}
+      register: k3s_cni_calico_crds
+      changed_when: "'created' in k3s_cni_calico_crds.stdout or 'configured' in k3s_cni_calico_crds.stdout"
+      when: not ansible_check_mode
+
     - name: Aplicar Tigera operator
       ansible.builtin.command: >-
         k3s kubectl apply --server-side --force-conflicts
         -f {{ k3s_cni_calico_operator_url }}
-      register: calico_op
-      changed_when: "'created' in calico_op.stdout or 'configured' in calico_op.stdout"
+      register: k3s_cni_calico_op
+      changed_when: "'created' in k3s_cni_calico_op.stdout or 'configured' in k3s_cni_calico_op.stdout"
       when: not ansible_check_mode
 
     - name: Renderizar custom resources Calico
@@ -63,8 +92,8 @@
       ansible.builtin.command: >-
         k3s kubectl apply --server-side --force-conflicts
         -f /tmp/calico-custom-resources.yaml
-      register: calico_cr
-      changed_when: "'created' in calico_cr.stdout or 'configured' in calico_cr.stdout"
+      register: k3s_cni_calico_cr
+      changed_when: "'created' in k3s_cni_calico_cr.stdout or 'configured' in k3s_cni_calico_cr.stdout"
       when: not ansible_check_mode
 
 - name: Instalar Cilium (HelmChart del helm-controller de K3s)
@@ -78,8 +107,8 @@
 
     - name: Aplicar Cilium
       ansible.builtin.command: k3s kubectl apply -f /tmp/cilium-helmchart.yaml
-      register: cilium_apply
-      changed_when: "'created' in cilium_apply.stdout or 'configured' in cilium_apply.stdout"
+      register: k3s_cni_cilium_apply
+      changed_when: "'created' in k3s_cni_cilium_apply.stdout or 'configured' in k3s_cni_cilium_apply.stdout"
       when: not ansible_check_mode
 
 - name: Esperar pods del CNI

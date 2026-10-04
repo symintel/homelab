@@ -24,11 +24,13 @@ Instala el **CNI externo** tras el server K3s cuando `k3s_install.core.cni` no e
 
 1. Salta si `cni == flannel` (Flannel embebido en K3s).
 2. **Canal**: manifest oficial Calico/Canal.
-3. **Calico**: Tigera operator + `custom-resources` con pod CIDR.
+3. **Calico**: CRDs + Tigera operator + `custom-resources` con pod CIDR (omitido si ArgoCD ya lo administra).
 4. **Cilium**: `HelmChart` del helm-controller de K3s (chart oficial `cilium` de `helm.cilium.io`; el `quick-install.yaml` ya no se publica).
 5. Espera pods Ready en `kube-system`.
 
-Alternativa GitOps: Applications `calico-operator`, `calico-config`, `canal`, `cilium`
+**Calico**: este rol solo hace el bootstrap (ArgoCD necesita red de pods para arrancar). Una vez
+que ArgoCD sigue el `Installation` (Applications `calico-operator` y `calico-config`), el rol
+lo detecta y **omite** Calico. Alternativas GitOps: `canal`, `cilium`
 (sync manual) en [`gitops`](https://github.com/symintel/gitops/tree/main/argocd/apps).
 
 ## Verificar

@@ -11,6 +11,44 @@ K3s como Kubernetes ligero bare-metal: server/agent, CNI (Container Network Inte
 (Flannel por defecto), deshabilitar Traefik/ServiceLB para controlar el Gateway y
 LoadBalancer vía GitOps después.
 
+!!! abstract "Aprende esta fase"
+    **En simple:** Kubernetes es el gerente de un restaurante: tú le dices "quiero siempre tres
+    cocineros trabajando" y él se encarga de reemplazar al que falte. El **control plane** es la gerencia
+    (decide) y los **workers** son la cocina (trabajan). K3s es una versión de Kubernetes pensada para
+    equipos pequeños.
+
+    **Conceptos clave**
+
+    - **Nodo:** un equipo del clúster; puede ser control plane (decide) o worker (ejecuta).
+    - **Pod:** la unidad mínima de ejecución: uno o más contenedores que viven juntos.
+    - **Deployment:** declara cuántas copias de un pod deben existir y las mantiene.
+    - **CNI (Container Network Interface):** el componente que da red a los pods; aquí, Calico.
+    - **`kubectl` y kubeconfig:** la herramienta de línea de comandos y el archivo con los datos de acceso al clúster.
+
+    **Reto práctico (seguro):** crea un deployment de prueba, borra uno de sus pods y mira cómo Kubernetes lo repone.
+
+    ```bash
+    kubectl get nodes -o wide
+    kubectl create deployment demo --image=nginx --replicas=2
+    kubectl get pods -l app=demo
+    kubectl delete pod -l app=demo --wait=false
+    kubectl get pods -l app=demo        # aparecen pods nuevos
+    kubectl delete deployment demo      # limpieza
+    ```
+
+    ??? question "¿Qué diferencia hay entre un pod y un deployment?"
+        El pod es una copia en ejecución; el deployment es la regla que dice cuántas copias deben existir
+        y las recrea si desaparecen.
+
+    ??? question "¿Qué pasa si se cae un worker?"
+        Kubernetes detecta que los pods dejaron de responder y los vuelve a crear en otros nodos sanos.
+
+    ??? question "¿Por qué hace falta un CNI?"
+        Porque Kubernetes no trae red de pods propia en este montaje: el CNI les da direcciones y los
+        comunica entre nodos.
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid
@@ -61,9 +99,11 @@ Profundización: [Opciones del playbook](../k3s/playbook-options.md) · [Catálo
 
     !!! warning "No uses `-e k3s_install.<opción>=…`"
         Ansible lo ignora: `k3s_install` es un diccionario y una clave con
-        puntos en `-e` no lo modifica. Y pasar `-e` con JSON es peor:
-        reemplaza el diccionario entero y se pierden `core.version`,
-        `cluster_cidr`, etc. Para cambiar una opción, edita el archivo.
+        puntos en `-e` no lo modifica (se instalaba el CNI por defecto sin avisar). Y pasar `-e`
+        con JSON es peor: reemplaza el diccionario entero y se pierden `core.version`,
+        `cluster_cidr`, etc. El playbook ahora **falla** en ambos casos. Para cambiar el CNI usa
+        `-e k3s_cni=canal` (o edita el archivo); ver
+        [opciones del playbook](../k3s/playbook-options.md).
 
 === "Alternativa manual"
 

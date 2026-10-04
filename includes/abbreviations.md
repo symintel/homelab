@@ -38,6 +38,7 @@
 *[HA]: alta disponibilidad — Diseño para que un servicio siga funcionando si cae un nodo.
 *[HTTP]: Hypertext Transfer Protocol
 *[HTTPS]: HTTP seguro (sobre TLS)
+*[IA]: inteligencia artificial — Programas que responden preguntas, resumen textos o generan ejercicios; aquí sirven de tutor para estudiar la guía.
 *[Incus]: Incus — Gestor de contenedores y máquinas virtuales (fork comunitario de LXD); aloja las instancias donde corren los nodos del HomeLab.
 *[IP]: dirección IP — Dirección de un equipo en la red (Internet Protocol).
 *[IPs]: dirección IP — Dirección de un equipo en la red (Internet Protocol).

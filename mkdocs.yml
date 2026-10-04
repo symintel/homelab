@@ -44,6 +44,10 @@ copyright: <a href="/privacidad/">Política de privacidad</a> · <a href="#__con
 extra_css:
   - stylesheets/extra.css
 
+# Botón "Aprende con IA" en cada paso (el enlace del cuaderno de NotebookLM está al inicio del archivo).
+extra_javascript:
+  - javascripts/ai-tutor.js
+
 # Google Analytics (gtag.js). Material genera el snippet por su cuenta a partir de esta opción.
 extra:
   analytics:
@@ -94,6 +98,38 @@ markdown_extensions:
 plugins:
   - search:
       lang: es
+  # llms.txt y llms-full.txt: toda la documentación en texto plano para IA (NotebookLM, ChatGPT, Gemini,
+  # Claude…). Se publican en la raíz del sitio. Ver docs/aprende.md.
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: >-
+        Documentación en español de un HomeLab híbrido (x86_64 + ARM64) con Incus, K3s, Argo CD (GitOps),
+        Calico, MetalLB, Gateway API y Longhorn. Está pensada para quien empieza y para quien ya sabe:
+        cada fase explica qué hacer, por qué y cómo verificarlo.
+      sections:
+        Inicio y glosario:
+          - index.md
+          - aprende.md
+          - glosario.md
+        Guía de implementación (Fases 0 a 6):
+          - implementacion/*.md
+        Operación (procedimientos de rutina):
+          - operacion/*.md
+        Arquitectura, plataforma y referencia:
+          - architecture/*.md
+          - hardware/*.md
+          - networking/*.md
+          - incus/*.md
+          - k3s/*.md
+          - gitops/*.md
+          - storage/*.md
+          - secrets/*.md
+          - symintel/*.md
+          - vcluster/*.md
+          - capn/*.md
+          - ansible/*.md
+          - security/*.md
+          - labs/cinc/*.md
 
 # Muchas páginas enlazan deliberadamente a fuentes fuera de docs_dir
 # (ansible/, repo symintel/gitops) en vez de duplicar su contenido aquí.
@@ -110,6 +146,7 @@ watch:
 nav:
   - Empieza aquí:
       - Inicio: index.md
+      - Aprende con IA (gratis): aprende.md
   - Implementación:
       - Visión general: implementacion/index.md
       - "Fase 0 — Preparación": implementacion/fase-0-preparacion.md
@@ -133,6 +170,7 @@ nav:
       - Actualizar ArgoCD: operacion/actualizar-argocd.md
       - Cambiar el controlador de Gateway: operacion/cambiar-gateway.md
       - Caché de los runners (ARC): operacion/cache-arc.md
+      - Calico (CNI) con ArgoCD: operacion/actualizar-calico.md
       - Rotar credenciales: operacion/rotar-credenciales.md
       - Pipeline de gitops: operacion/pipeline-gitops.md
   - Arquitectura:

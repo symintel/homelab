@@ -50,6 +50,14 @@ navegador a GitHub, que recibe tu dirección IP.
 Tu elección del aviso se guarda en el almacenamiento local de tu navegador, para no volver a
 preguntarte en cada página. No sale de tu equipo.
 
+### Botones «Aprende con IA» (solo cuando haces clic)
+
+Los botones **Aprende con IA** de la guía copian una pregunta a tu portapapeles y abren el cuaderno de NotebookLM
+**solo cuando los pulsas**. El sitio no envía datos a ninguna IA ni los comparte con terceros: la pregunta se queda en
+tu equipo hasta que tú la pegas. El nivel que eliges (principiante, intermedio o experto) se guarda únicamente en la
+pestaña de tu navegador (`sessionStorage`) y se borra al cerrarla. Lo que escribas dentro de NotebookLM lo trata
+Google según su [política de privacidad](https://policies.google.com/privacy).
+
 ## Base para usar los datos
 
 Google Analytics y los datos de GitHub se basan en tu **consentimiento**, que das en el aviso

@@ -10,6 +10,37 @@ Provisionar **workload clusters** kubeadm sobre instancias Incus vía
 CAPI (Cluster API) declara clusters como recursos Kubernetes; CAPN (Cluster API Provider for Incus) traduce `LXCMachine` en
 instancias Incus — clusters efímeros sin tocar el management K3s (distribución ligera de Kubernetes).
 
+!!! abstract "Aprende esta fase"
+    **En simple:** Cluster API es una impresora 3D de clústeres: en vez de armar cada clúster a mano,
+    escribes una descripción y el sistema lo fabrica. CAPN es el "accesorio" que usa Incus como
+    fábrica: cada nodo del clúster nuevo es una instancia de Incus.
+
+    **Conceptos clave**
+
+    - **Management cluster y workload cluster:** el primero gestiona; el segundo es el que se crea y se usa.
+    - **Provider (proveedor):** el plugin que sabe crear máquinas en una plataforma concreta (aquí, Incus).
+    - **Recursos declarativos:** un clúster se describe como un objeto de Kubernetes (por ejemplo `LXCMachine`).
+    - **Clústeres efímeros:** se crean para una prueba y se destruyen después.
+
+    **Reto práctico (seguro):** genera la descripción de un clúster y léela, **sin aplicarla**. Primero exporta
+    las variables que aparecen en la sección «Ejecutar» de esta fase; después:
+
+    ```bash
+    clusterctl generate cluster demo -i incus \
+      --kubernetes-version v1.36.2 \
+      --control-plane-machine-count 1 \
+      --worker-machine-count 2 > /tmp/demo.yaml
+    less /tmp/demo.yaml     # solo lectura: no ejecutes kubectl apply
+    ```
+
+    ??? question "¿Por qué crear clústeres desde un manifiesto y no a mano?"
+        Se repiten igual cada vez, quedan en Git y se pueden destruir y recrear sin esfuerzo.
+
+    ??? question "¿Qué diferencia hay entre el management cluster y un workload cluster?"
+        El management cluster crea y vigila a los demás; los workload clusters ejecutan las aplicaciones.
+
+    ¿Dudas? Usa el botón **Aprende con IA** junto a cada título, o la página [Aprende](../aprende.md).
+
 ## Stack de esta fase
 
 ```mermaid

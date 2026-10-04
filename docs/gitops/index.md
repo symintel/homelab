@@ -83,7 +83,7 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 |---|---|---|
 | **`vcluster-platform`** | [vCluster Platform](https://www.vcluster.com/docs/platform/) | UI: kubeconfig del host K3s (connected) + vclusters. |
 | **`capn-demo`** | [CAPN](https://capn.linuxcontainers.org/) | Cluster API sobre Incus. |
-| **`calico-operator`** + **`calico-config`** | [Calico](https://docs.tigera.io/calico/latest/about/) | CNI Calico (operator + Installation CR). Aplicar **ambas** en orden. |
+| **`calico-operator`** + **`calico-config`** | [Calico](https://docs.tigera.io/calico/latest/about/) | CNI Calico (CRDs + operador + `Installation`). **Activas**: ArgoCD administra y actualiza Calico (v3.33.0); lo instaló Ansible al crear el clúster. Sync **manual**. Ver [Calico con ArgoCD](../operacion/actualizar-calico.md). |
 | **`canal`** | [Canal](https://docs.tigera.io/calico/latest/getting-started/kubernetes/flannel/flannel) | CNI Canal (Flannel + políticas Calico). |
 | **`cilium`** | [Cilium](https://docs.cilium.io/) | CNI Cilium vía Helm. |
 

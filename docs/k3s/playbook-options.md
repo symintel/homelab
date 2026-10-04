@@ -101,11 +101,31 @@ ansible-playbook -i inventory.ini playbook-k3s.yml
 !!! warning "`-e k3s_install.x.y=valor` no funciona"
     Ansible no fusiona claves con puntos contra un dict existente — crea una
     variable nueva separada (literalmente llamada `"k3s_install.x.y"`) y
-    `k3s_install` queda sin tocar. Un `-e` con JSON tampoco sirve: **reemplaza**
-    el dict entero en vez de fusionarlo, así que perdés `core.version`,
-    `cluster_cidr`, etc. Para togglear estas opciones, editá el archivo.
+    `k3s_install` queda sin tocar: **se instalaba el CNI por defecto sin avisar**. Un `-e` con
+    JSON tampoco sirve: **reemplaza** el dict entero, así que se pierden `core.version`,
+    `cluster_cidr`, etc. El playbook ahora detecta ambos casos y **falla** antes de tocar los nodos.
 
-Alternativa GitOps (sync manual): Applications `calico-operator` + `calico-config`,
+Para cambiar una opción puntual desde la línea de comandos hay variables de nivel superior:
+
+| Variable | Valores | Equivale a |
+|---|---|---|
+| `k3s_cni` | `flannel`, `canal`, `calico`, `cilium` | `k3s_install.core.cni` |
+| `k3s_gitops_argocd_enabled` | `true` / `false` | `k3s_install.gitops_argocd.enabled` |
+| `k3s_node_labels_enabled` | `true` / `false` | `k3s_install.node_labels.enabled` |
+
+```bash
+ansible-playbook -i inventory.ini playbook-k3s.yml \
+  -e k3s_cni=canal \
+  -e k3s_gitops_argocd_enabled=true \
+  -e k3s_node_labels_enabled=true
+```
+
+El CNI se elige **antes de crear el clúster**: cambiarlo después en un clúster que ya corre no
+reinstala la red y puede dejar dos CNI peleando. Si ya instalaste con otro, el cambio es una
+migración, no un flag.
+
+Calico lo administra ArgoCD tras el bootstrap (Applications `calico-operator` + `calico-config`, sync manual; ver
+[Calico con ArgoCD](../operacion/actualizar-calico.md)). Alternativas GitOps (sync manual):
 `canal` o `cilium` en [`gitops/argocd/apps/`](https://github.com/symintel/gitops/tree/main/argocd/apps) —
 solo si instalaste K3s con `cni` distinto de `flannel` vía Ansible **o** aplicas el
 manifest tras `--flannel-backend=none`. **No** actives más de una app CNI (Container Network Interface) a la vez.
@@ -183,7 +203,8 @@ Catálogo completo y guía paso a paso en [Fase 4 — GitOps](../implementacion/
 | K3s upgrades | `k3s-upgrade` | auto (wave 3) |
 | vCluster Platform | `vcluster-platform` | manual |
 | CAPN demo | `capn-demo` | manual |
-| CNI (opcional) | `calico-operator`, `calico-config`, `canal`, `cilium` | manual |
+| CNI Calico | `calico-operator`, `calico-config` | manual (activas) |
+| CNI alternativos (opcional) | `canal`, `cilium` | manual |
 
 ### Análisis de trade-offs — kube-vip vs MetalLB
 
