@@ -25,7 +25,7 @@ from onepassword import (
     ItemFieldType,
 )
 
-# Cuenta personal por defecto (no empresa). Ejemplo real: Mi Cuenta
+# Cuenta personal por defecto (no empresa). Ejemplo: Mi Cuenta
 ACCOUNT_NAME = os.getenv("ONEPASSWORD_ACCOUNT_NAME", "Personal")
 
 # Bóveda e ítem de Dex: op://HomeLab/symintel-dex/GITHUB_CLIENT_ID

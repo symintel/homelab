@@ -227,7 +227,7 @@ Espera `Healthy` en: `gateway-api`, `cert-manager`, `sealed-secrets`, `openebs`,
 | `cert-manager` | [cert-manager](https://cert-manager.io/docs/) | Emite certificados; crea el de cada Gateway con la anotación `cert-manager.io/cluster-issuer` |
 | `sealed-secrets` | [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) | Descifra `SealedSecret` en el clúster; usa la llave de 1Password (item `sealed-secrets`) si el playbook de secretos ya la creó |
 | `openebs` | [OpenEBS](https://openebs.io/docs) | LocalPV default |
-| `homelab-storage` | — | StorageClasses `openebs-hostpath`, `longhorn-mixto` |
+| `homelab-storage` | — | StorageClasses `openebs-hostpath` y `longhorn-mixto` ([cuál usar y sus trade-offs](../storage/index.md#storageclasses-del-cluster)) |
 | `metallb` | [MetalLB](https://metallb.universe.tf/) | Controller LoadBalancer |
 
 **Verificar:**

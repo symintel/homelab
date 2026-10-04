@@ -44,6 +44,23 @@ anotaciones cambian de uno a otro, los `HTTPRoute` no.
     kubectl -n cert-manager get secret homelab-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > homelab-ca.crt
     ```
 
+## Por qué el Service usa `externalTrafficPolicy: Local`
+
+Con la política por defecto (`Cluster`), el tráfico que llega desde la LAN a un nodo que
+**no** tiene el pod del controlador se reenvía a otro nodo, y en este clúster esa
+conexión no responde: `curl` a `192.168.23.200` expiraba aunque el DNS resolvía bien.
+Pasaba solo con tráfico externo que entraba por `deborah` u `oliver`; los pods, los
+servicios y las conexiones desde los propios nodos funcionaban. Con `Local`, MetalLB
+anuncia la IP desde el nodo donde corre el controlador y el tráfico va directo al pod
+(y además se conserva la IP del cliente). Los tres controladores lo traen en
+`gitops/argocd/apps/`.
+
+!!! note "Causa de fondo sin resolver"
+    No se aclaró por qué falla el reenvío entre nodos del tráfico externo (el overlay de
+    Calico entre pods sí funciona). Afecta a cualquier otro Service `LoadBalancer` o
+    `NodePort` con política `Cluster`. Para investigarlo hace falta capturar paquetes en
+    los nodos (`tcpdump` no está instalado).
+
 ## Cambiar de controlador
 
 1. En `bootstrap/root-appset.yaml` (repo `gitops`), **comenta** el controlador
@@ -95,6 +112,7 @@ Gateway esté `Programmed`, entra a ArgoCD con
 | Síntoma | Revisar |
 |---|---|
 | `Gateway` sin dirección o `PROGRAMMED=False` | `kubectl describe gateway homelab -n gateway`: GatewayClass inexistente (controlador no activo) o CRDs de Gateway API ausentes (`gateway-api` sin sincronizar) |
+| `curl https://argocd.homelab.local` expira aunque el DNS resuelve a `192.168.23.200` | Revisa que el Service del controlador tenga `externalTrafficPolicy: Local` (`kubectl -n kong get svc kong-gateway-proxy -o jsonpath='{.spec.externalTrafficPolicy}'`) y que el pod corra en un nodo que MetalLB pueda anunciar |
 | Dos controladores activos | Comenta uno: se pelean por las IP de MetalLB |
 | El Gateway no tiene certificado (`homelab-tls` no existe) | `kubectl describe certificate -n gateway`; `cert-manager-config` debe estar `Healthy` |
 | `HTTPRoute` sin `Accepted` | `kubectl describe httproute -n argocd argocd-server`: `parentRefs` debe apuntar a `homelab` en `gateway` |
