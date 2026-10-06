@@ -25,19 +25,27 @@ kubectl get installation default -o jsonpath='{.status.calicoVersion}{"\n"}'
 kubectl -n tigera-operator get deploy tigera-operator -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 ```
 
-## Adoptar y actualizar a v3.33.0 (primera vez)
+## Adoptar y actualizar: 3.29.1 → 3.31.7 → 3.33.0 (en dos etapas)
 
-Calico se instaló con **v3.29.1** (operador `v1.36.2`). El primer Sync adopta los recursos
-existentes y además **actualiza el CNI a v3.33.0** (operador `v1.44.0`). En la v3.33 los CRDs
-vienen en un archivo aparte (`operator-crds.yaml`), que ya incluye el kustomization.
+Calico se instaló con **v3.29.1** (operador `v1.36.2`). La v3.33 solo soporta actualizar desde la **v3.31 o la v3.32**
+(documentación de Calico), así que el salto directo desde la 3.29 **no está soportado**. Se hace en dos etapas, cada una
+con su Sync y su verificación:
 
-!!! danger "El salto 3.29 → 3.33 está fuera de lo que documenta Calico"
-    La documentación de Calico cubre actualizar a la v3.33 desde las **dos versiones anteriores**
-    (v3.31 y v3.32). Aquí se hace un salto directo de cuatro versiones menores, a petición. Si
-    falla, la red de pods de los tres nodos queda comprometida y **no hay vuelta atrás
-    sencilla**. Hazlo con ventana de mantenimiento y con acceso directo a los nodos. La ruta
-    documentada es pasar por v3.31.x (se cambia la versión en `cni/calico-operator/kustomization.yaml`,
-    se hace Sync, se verifica, y se repite con la v3.33.0).
+| Etapa | `cni/calico-operator/kustomization.yaml` | Operador | Qué hace |
+|---|---|---|---|
+| 1 | `v3.31.7` | `v1.40.15` | Adopta los recursos existentes y actualiza el CNI de 3.29.1 a 3.31.7 |
+| 2 | `v3.33.0` | `v1.44.0` | Actualiza de 3.31.7 a 3.33.0 |
+
+Desde la v3.31 los CRDs vienen en un archivo aparte (`operator-crds.yaml`), que ya incluye el kustomization.
+
+Las dos Applications llevan `argocd.argoproj.io/compare-options: ServerSideDiff=true`: sin eso, Argo CD muestra `OutOfSync`
+fantasma en los CRD de Calico y en los campos que el operador completa (como `assignmentMode` en el pool, nuevo en la v3.31),
+aunque `kubectl diff --server-side` salga vacío.
+
+!!! danger "Es la red de los pods de los tres nodos"
+    Si una etapa falla, la red de pods queda comprometida y **no hay vuelta atrás sencilla**. Hazlo con ventana de
+    mantenimiento y con acceso directo a los nodos. Es el mismo error que rompió Longhorn al saltar de la 1.6 a la 1.13:
+    nunca saltes más versiones de las que soporta la documentación del proyecto.
 
 **Antes:**
 
@@ -65,11 +73,13 @@ operador escribe, para que ArgoCD y el operador no se pisen.
    actualiza y reinicia los `calico-node` **de a un nodo** (`maxUnavailable: 1`).
 3. Vigila: `kubectl -n calico-system get pods -w` y `kubectl get tigerastatus`.
 4. Cuando todo esté `Available`, **Sync** de `calico-config`.
+5. Verifica la etapa 1 (siguiente bloque) y **repite los pasos 2–4 para la etapa 2**, tras cambiar las URLs a `v3.33.0`
+   y hacer push.
 
 **Después:**
 
 ```bash
-kubectl get installation default -o jsonpath='{.status.calicoVersion}{"\n"}'   # v3.33.0
+kubectl get installation default -o jsonpath='{.status.calicoVersion}{"\n"}'   # v3.31.7 tras la etapa 1; v3.33.0 tras la 2
 kubectl get tigerastatus
 kubectl -n argocd run curl-test --rm -i --restart=Never --image=curlimages/curl --quiet -- \
   curl -s -o /dev/null -w "%{http_code}\n" http://kong-gateway-proxy.kong.svc:80/

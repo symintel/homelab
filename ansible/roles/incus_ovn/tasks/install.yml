@@ -1,0 +1,59 @@
+---
+# serial: 1 en el playbook. El primer nodo (el líder) crea la base de datos y los demás se unen.
+- name: Instalar OVN y Open vSwitch
+  ansible.builtin.apt:
+    name: [ovn-central, ovn-host, openvswitch-switch]
+    state: present
+    update_cache: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: incus_ovn_confirm | bool
+
+- name: Configurar ovn-central (base de datos en clúster)
+  ansible.builtin.copy:
+    dest: /etc/default/ovn-central
+    mode: "0644"
+    content: |
+      # Gestionado por el rol incus_ovn
+      OVN_CTL_OPTS=" \
+        --db-nb-addr={{ static_ip }} --db-nb-create-insecure-remote=yes \
+        --db-sb-addr={{ static_ip }} --db-sb-create-insecure-remote=yes \
+        --db-nb-cluster-local-addr={{ static_ip }} --db-sb-cluster-local-addr={{ static_ip }} \
+      {% if inventory_hostname != incus_ovn_leader %}
+        --db-nb-cluster-remote-addr={{ hostvars[incus_ovn_leader].static_ip }} \
+        --db-sb-cluster-remote-addr={{ hostvars[incus_ovn_leader].static_ip }} \
+      {% endif %}
+        --ovn-northd-nb-db={{ incus_ovn_nb_conn }} \
+        --ovn-northd-sb-db={{ incus_ovn_sb_conn }}"
+  register: incus_ovn_conf
+  when: incus_ovn_confirm | bool
+
+- name: Arrancar ovn-central (se reinicia solo si cambió la configuración)
+  ansible.builtin.systemd_service:
+    name: ovn-central
+    state: "{{ 'restarted' if incus_ovn_conf is changed else 'started' }}"
+    enabled: true
+  when: incus_ovn_confirm | bool
+
+- name: Esperar a que escuche la base de datos Northbound
+  ansible.builtin.wait_for:
+    host: "{{ static_ip }}"
+    port: 6641
+    timeout: 90
+  when: incus_ovn_confirm | bool
+
+- name: Apuntar ovn-controller a la base de datos Southbound (Geneve sobre la IP del nodo)
+  ansible.builtin.command: >-
+    ovs-vsctl set open_vswitch .
+    external_ids:ovn-remote="{{ incus_ovn_sb_conn }}"
+    external_ids:ovn-encap-type=geneve
+    external_ids:ovn-encap-ip={{ static_ip }}
+  changed_when: true
+  when: incus_ovn_confirm | bool
+
+- name: Activar ovn-controller
+  ansible.builtin.systemd_service:
+    name: ovn-controller
+    state: started
+    enabled: true
+  when: incus_ovn_confirm | bool

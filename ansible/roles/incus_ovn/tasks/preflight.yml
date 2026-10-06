@@ -1,0 +1,96 @@
+---
+- name: Versión de Incus, paquetes de OVN disponibles, memoria y bridge
+  ansible.builtin.shell: |
+    set -o pipefail
+    echo "incus=$(incus version | awk '/Server/ {print $3}')"
+    echo "memoria disponible MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)"
+    for p in ovn-central ovn-host openvswitch-switch; do
+      echo "$p: instalado=$(dpkg-query -W -f='${Version}' $p 2>/dev/null || echo no) candidato=$(apt-cache policy $p | awk '/Candidate:/ {print $2}')"
+    done
+    echo "{{ incus_ovn_uplink_parent }}: $(ip -br addr show {{ incus_ovn_uplink_parent }} | awk '{print $1, $3}')"
+    echo "miembro: $(incus cluster list --format csv -c ns | grep "^{{ inventory_hostname }}," )"
+  args:
+    executable: /bin/bash
+  register: incus_ovn_pre
+  changed_when: false
+  check_mode: false
+
+- name: Mostrar el preflight
+  ansible.builtin.debug:
+    var: incus_ovn_pre.stdout_lines
+
+- name: Memoria suficiente para OVN (OVS, ovn-controller y base de datos)
+  ansible.builtin.assert:
+    that: (incus_ovn_pre.stdout_lines | select('match', '^memoria') | first | regex_replace('^.*=', '') | int) >= incus_ovn_min_free_mb
+    fail_msg: "Menos de {{ incus_ovn_min_free_mb }} MB disponibles en {{ inventory_hostname }} (-e incus_ovn_min_free_mb=N para ajustar)"
+    quiet: true
+
+- name: Los segmentos de la LAN no deben solaparse con el DHCP, con MetalLB ni entre sí  # noqa: run-once[task]
+  ansible.builtin.shell: |
+    set -o pipefail
+    python3 - <<'PY'
+    import ipaddress, sys
+    def rng(txt):
+        if "-" in txt:
+            a, b = txt.split("-")
+            return int(ipaddress.ip_address(a)), int(ipaddress.ip_address(b))
+        n = ipaddress.ip_network(txt, strict=False)
+        return int(n.network_address), int(n.broadcast_address)
+    nuevos = {"LB": rng("{{ incus_ovn_lb_routes }}"), "OVN externo": rng("{{ incus_ovn_external_ranges }}")}
+    ocupados = {"DHCP": rng("{{ incus_ovn_dhcp_range }}"), "MetalLB": rng("{{ incus_ovn_metallb_range }}")}
+    lan = ipaddress.ip_network("192.168.20.0/22")
+    fallos = []
+    for n, (a, b) in nuevos.items():
+        if not (int(lan.network_address) <= a and b <= int(lan.broadcast_address) - 1):
+            fallos.append(f"{n} sale de la LAN o usa el broadcast")
+        for o, (c, d) in ocupados.items():
+            if a <= d and c <= b:
+                fallos.append(f"{n} solapa con {o}")
+    (a, b), (c, d) = nuevos["LB"], nuevos["OVN externo"]
+    if a <= d and c <= b:
+        fallos.append("LB solapa con OVN externo")
+    print("segmentos sin solapes" if not fallos else "SOLAPES: " + "; ".join(fallos))
+    sys.exit(1 if fallos else 0)
+    PY
+  args:
+    executable: /bin/bash
+  register: incus_ovn_overlap
+  changed_when: false
+  check_mode: false
+  run_once: true
+
+- name: Mostrar la comprobación de solapes  # noqa: run-once[task]
+  ansible.builtin.debug:
+    var: incus_ovn_overlap.stdout_lines
+  run_once: true
+
+- name: Las IP reservadas no deben responder (colisión con equipos existentes)  # noqa: run-once[task]
+  ansible.builtin.shell: |
+    set -o pipefail
+    python3 - <<'PY' | while read ip; do ping -c1 -W1 -q "$ip" >/dev/null 2>&1 && echo "RESPONDE $ip"; done; echo "comprobadas las IP de los segmentos LAN"
+    import ipaddress
+    a, b = "{{ incus_ovn_external_ranges }}".split("-")
+    for i in range(int(ipaddress.ip_address(a)), int(ipaddress.ip_address(b)) + 1):
+        print(ipaddress.ip_address(i))
+    for h in ipaddress.ip_network("{{ incus_ovn_lb_routes }}", strict=False).hosts():
+        print(h)
+    PY
+  args:
+    executable: /bin/bash
+  register: incus_ovn_ping
+  changed_when: false
+  check_mode: false
+  run_once: true
+
+- name: Mostrar posibles colisiones  # noqa: run-once[task]
+  ansible.builtin.debug:
+    var: incus_ovn_ping.stdout_lines
+  run_once: true
+
+- name: Aviso - sin confirmación no se cambia nada  # noqa: run-once[task]
+  ansible.builtin.debug:
+    msg: >-
+      Modo seguro: no se instaló nada. {{ incus_ovn_external_ranges }} y {{ incus_ovn_lb_routes }} quedan fuera del DHCP
+      ({{ incus_ovn_dhcp_range }}) y de MetalLB ({{ incus_ovn_metallb_range }}); ejecuta con -e incus_ovn_confirm=true.
+  run_once: true
+  when: not (incus_ovn_confirm | bool)

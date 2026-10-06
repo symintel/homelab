@@ -28,13 +28,13 @@
 {% set _ = uso_map.update({fparts[0]: fparts[1]}) %}
 {% endif %}
 {% endfor %}
-| Disco | Rotacional | Tamaño | Modelo | Uso |
+| Disco | Tipo | Tamaño | Modelo | Uso |
 |---|---|---|---|---|
 {% for line in node_report.discos %}
 {% set parts = line.split('|') %}
 {% if parts | length >= 4 %}
 {% set uso = uso_map.get(parts[0], 'NA') %}
-| {{ parts[0] }} | {{ 'HDD (rotacional)' if parts[1] == '1' else 'SSD/NVMe (no rotacional)' if parts[1] == '0' else 'NA' }} | {{ parts[2] }} | {{ parts[3] }} | {{ '🟢 LIBRE' if uso == 'libre' else '⚠️ REVISAR (tamaño implausible)' if uso == 'revisar' else 'En uso' if uso == 'en_uso' else 'Sistema (no asignable)' if uso == 'sistema' else 'NA' }} |
+| {{ parts[0] }} | {{ 'NVMe' if parts[0].startswith('nvme') else 'eMMC/SD' if parts[0].startswith('mmcblk') else 'zram (RAM comprimida)' if parts[0].startswith('zram') else 'flash SPI' if parts[0].startswith('mtd') else 'HDD (rotacional)' if parts[1] == '1' else 'SSD' if parts[1] == '0' else 'NA' }} | {{ parts[2] }} | {{ parts[3] }} | {{ '🟢 LIBRE' if uso == 'libre' else '⚠️ REVISAR (tamaño implausible)' if uso == 'revisar' else 'En uso' if uso == 'en_uso' else 'Sistema (no asignable)' if uso == 'sistema' else 'NA' }} |
 {% endif %}
 {% endfor %}
 

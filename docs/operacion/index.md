@@ -9,6 +9,7 @@ pasos en orden, cómo verificar y qué revisar si algo falla.
 
 | Procedimiento | Cuándo | Dónde se ejecuta |
 |---|---|---|
+| [URLs y accesos de los productos](urls-y-accesos.md) | Saber dónde está cada herramienta, cómo se entra y si responde | Navegador, `kubectl` |
 | [Agregar un repo](agregar-repo.md) | Cada proyecto nuevo en la org `symintel` | 1Password + PR en `infra` |
 | [Agregar un nodo](agregar-nodo.md) | Sumar un equipo al clúster Incus y K3s | Ansible (`homelab`) |
 | [Sacar o reemplazar un nodo](sacar-nodo.md) | Retirar un equipo o cambiarlo por otro | `kubectl`, Incus y Ansible |
@@ -17,6 +18,7 @@ pasos en orden, cómo verificar y qué revisar si algo falla.
 | [Actualizar K3s](actualizar-k3s.md) | Revisar las actualizaciones automáticas o fijar una versión | GitOps + Ansible |
 | [Actualizar ArgoCD](actualizar-argocd.md) | Se actualiza solo a la última versión; primera actualización, fijar una versión, qué hacer si falla | GitOps + Ansible |
 | [Cambiar el controlador de Gateway](cambiar-gateway.md) | Cambiar entre Kong, Traefik y NGINX; TLS de `*.homelab.local` | GitOps + `kubectl` |
+| [Actualizar Debian en deborah (12 → 13)](actualizar-debian-deborah.md) | Pasar el control plane a Debian 13, con respaldo y compuerta de arranque | Ansible (`homelab`) |
 | [Calico (CNI) con ArgoCD](actualizar-calico.md) | Cómo ArgoCD administra y actualiza la red de los pods | GitOps + `kubectl` |
 | [Caché de los runners (ARC)](cache-arc.md) | Qué se cachea entre jobs, cómo verificarla, limpiarla o vaciarla | `kubectl` + GitOps |
 | [Rotar credenciales](rotar-credenciales.md) | Periódicamente, o si una credencial se filtró | 1Password + playbooks |

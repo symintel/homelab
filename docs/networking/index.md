@@ -99,18 +99,34 @@ incus profile device add default eth0 nic nictype=bridged parent=br0
 > (no subredes distintas). La fuente de verdad en todo momento es
 > `ansible_host` en `inventory.ini`.
 
-IPs fijas y reservadas de la LAN:
+### Direccionamiento de la LAN (`192.168.20.0/22`, gateway `192.168.20.1`)
 
-| Uso | IP / rango | Dónde se configura |
+El DHCP del router reparte **`192.168.20.31` a `192.168.23.191`**. Todo lo fijo vive **fuera** de ese rango:
+
+| Rango | Uso | Dónde se configura |
 |---|---|---|
-| deborah, invincible, oliver | `192.168.20.5`, `.6`, `.7` | `static_ip` en `inventory.ini` |
-| VIP del API de K3s (kube-vip, opcional) | `192.168.20.4` | `kube_vip.address` en `k3s_install.yml` |
-| Pool de MetalLB (`LoadBalancer`, Gateway) | `192.168.23.200–192.168.23.220` | [`gitops/metallb/ipaddresspool.yaml`](https://github.com/symintel/gitops/blob/main/metallb/ipaddresspool.yaml) |
+| `192.168.20.1` | Gateway (router) | Router |
+| `192.168.20.4` | VIP del API de K3s (kube-vip, opcional) | `kube_vip.address` en `k3s_install.yml` |
+| `192.168.20.5`, `.6`, `.7` | deborah, invincible, oliver | `static_ip` en `inventory.ini` |
+| `192.168.20.31 – 192.168.23.191` | **DHCP del router** | Router |
+| `192.168.23.192 – .199` | Libre | — |
+| `192.168.23.200 – .220` | **MetalLB** (`LoadBalancer`, Gateway; el Gateway de Kong usa `.200`) | [`gitops/metallb/ipaddresspool.yaml`](https://github.com/symintel/gitops/blob/main/metallb/ipaddresspool.yaml) |
+| `192.168.23.221 – .223` | Libre | — |
+| `192.168.23.224/28` (`.224–.239`) | **LB de Incus** (OVN), `ipv4.routes` de la uplink | `incus_ovn_lb_routes` en `group_vars/incus_cluster/ovn.yml` |
+| `192.168.23.240 – .249` | **OVN externo**, `ipv4.ovn.ranges` (un router virtual por red OVN) | `incus_ovn_external_ranges` en el mismo archivo |
+| `192.168.23.250 – .255` | Libre (`.255` es el broadcast de la `/22`) | — |
+
+Fuera de la LAN, redes privadas que no se pueden solapar con ella ni entre sí:
+
+| Red | Uso |
+|---|---|
+| `10.42.0.0/16` y `10.43.0.0/16` | Pods y Services de K3s |
+| `192.168.19.0/24` | Red interna de OVN (`ovn-lan`, con NAT) |
 
 !!! warning "Fuera del DHCP"
-    Como el DHCP del router reparte en toda la `/22`, estas IPs y el pool de
-    MetalLB tienen que quedar **reservados o fuera del rango del DHCP** en el
-    router. Si no, el router puede dárselas a otro equipo y chocar.
+    Las IPs fijas, el pool de MetalLB y los segmentos de OVN tienen que quedar **fuera del rango del DHCP**
+    (`192.168.20.31–192.168.23.191`). Si no, el router puede dárselas a otro equipo y chocar. El preflight del rol
+    `incus_ovn` falla si sus segmentos solapan con el DHCP o con MetalLB.
 
 Tras `playbook-set-static-ip.yml`, actualizar `ansible_host` en
 [`inventory.ini`](https://github.com/symintel/homelab/blob/main/ansible/inventory.ini)

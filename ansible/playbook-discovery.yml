@@ -147,11 +147,33 @@
         elif grep -q '^Hardware' /proc/cpuinfo 2>/dev/null; then
           grep -m1 '^Hardware' /proc/cpuinfo | cut -d: -f2 | xargs
         else
-          echo "NA"
+          # ARM moderno (p. ej. RK3588): el SoC está en el device-tree y los núcleos en lscpu.
+          soc=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
+          cores=$(lscpu 2>/dev/null | awk -F: '/Model name/ {gsub(/^ +/, "", $2); print $2}' | sort -u | paste -sd'/' -)
+          if [ -n "$soc" ] && [ -n "$cores" ]; then echo "$soc ($cores)"
+          elif [ -n "$soc" ]; then echo "$soc"
+          elif [ -n "$cores" ]; then echo "$cores"
+          else echo "NA"; fi
         fi
       args:
         executable: /bin/bash
       register: cpu_model_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Contar núcleos físicos (lógicos / hilos por núcleo; el fact processor_cores sale 1 en ARM)
+      # No contar pares CORE,SOCKET de lscpu -p: en ARM big.LITTLE (RK3588) los ids se repiten entre
+      # clústeres y el resultado sale mal (6 en vez de 8).
+      ansible.builtin.shell: |
+        set -o pipefail
+        threads=$(lscpu 2>/dev/null | awk -F: '/^Thread\(s\) per core/ {gsub(/ /, "", $2); print $2; exit}')   # big.LITTLE repite el bloque: tomar el primero
+        logical=$(nproc --all 2>/dev/null)
+        if [ -n "$threads" ] && [ "$threads" -gt 0 ] 2>/dev/null && [ -n "$logical" ]; then
+          echo $((logical / threads))
+        fi
+      args:
+        executable: /bin/bash
+      register: cpu_cores_raw
       changed_when: false
       failed_when: false
 
@@ -182,8 +204,14 @@
         set -o pipefail
         kvm_ok="no"
         [ -e /dev/kvm ] && kvm_ok="yes"
-        incus_ver=$(incus version 2>/dev/null | head -1) || incus_ver="no instalado"
-        k3s_ver=$(k3s --version 2>/dev/null | head -1) || k3s_ver="no instalado"
+        # No usar `cmd | head -1` con pipefail: head cierra la tubería tras la primera línea,
+        # el comando recibe SIGPIPE al escribir la segunda ("Server version", "go version") y el
+        # `||` pisa un valor correcto con "no instalado" (fallaba siempre en deborah, más lenta).
+        # Se captura toda la salida y recién después se toma la primera línea.
+        incus_out=$(incus version 2>/dev/null) || incus_out=""
+        incus_ver=$(printf '%s\n' "$incus_out" | sed -n '1p')
+        k3s_out=$(k3s --version 2>/dev/null) || k3s_out=""
+        k3s_ver=$(printf '%s\n' "$k3s_out" | sed -n '1p')
         [ -z "$incus_ver" ] && incus_ver="no instalado"
         [ -z "$k3s_ver" ] && k3s_ver="no instalado"
         echo "kvm=${kvm_ok}|incus=${incus_ver}|k3s=${k3s_ver}"
@@ -198,7 +226,9 @@
         set -o pipefail
         for bin in docker containerd python3 git qemu-img virsh; do
           if command -v "$bin" >/dev/null 2>&1; then
-            ver=$("$bin" --version 2>/dev/null | head -1)
+            # Sin `| head -1` con pipefail (SIGPIPE si el comando imprime varias líneas, p. ej. qemu-img).
+            ver_out=$("$bin" --version 2>/dev/null) || ver_out=""
+            ver=$(printf '%s\n' "$ver_out" | sed -n '1p')
             echo "${bin}|${ver}"
           else
             echo "${bin}|no instalado"
@@ -449,7 +479,7 @@
             {%- else -%}
             revisar — esperado {{ expected }}, detectado {{ detected }}
             {%- endif -%}
-          nucleos_fisicos: "{{ ansible_facts['processor_cores'] | default('NA') }}"
+          nucleos_fisicos: "{{ cpu_cores_raw.stdout | default('') | trim | default(ansible_facts['processor_cores'] | default('NA'), true) }}"
           nucleos_logicos: "{{ ansible_facts['processor_vcpus'] | default('NA') }}"
           ram_total_mb: "{{ ansible_facts['memtotal_mb'] }}"
           ram_total_gb: "{{ (ansible_facts['memtotal_mb'] / 1024) | round(1) }}"

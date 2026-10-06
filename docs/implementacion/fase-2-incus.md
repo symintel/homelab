@@ -89,9 +89,9 @@ dedicado). Variables en [`group_vars/incus_cluster/vars.yml`](https://github.com
 
 | Nodo | Disco | Implicación |
 |---|---|---|
-| `invincible` | TECLAST 120 GB SSD | Leader + UI; evitar llenar disco con imágenes CAPN |
-| `oliver` | Kingston 224 GB SSD | Quorum; pool local obligatorio aunque no reciba instancias |
-| `deborah` | eMMC + NVMe 250 GB | Si eMMC justo: `incus_storage_path: /srv/incus/storage-pools/local` en host_vars |
+| `invincible` | Kingston 224 GB SSD | Leader + UI; el pool más grande de los nodos x86 |
+| `oliver` | TECLAST 120 GB SSD | Quorum; pool local obligatorio aunque no reciba instancias; evitar llenar el disco con imágenes CAPN |
+| `deborah` | eMMC 233 GB (NVMe 250 GB no detectado hoy) | Si eMMC justo: `incus_storage_path: /srv/incus/storage-pools/local` en host_vars |
 
 ### Limitaciones de `dir`
 

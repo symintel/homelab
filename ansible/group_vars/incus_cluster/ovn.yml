@@ -1,0 +1,18 @@
+---
+# OVN para Incus (rol incus_ovn): balanceadores de red y redes virtuales.
+# Opcional y apagado por defecto: playbook-incus-cluster.yml no lo toca mientras sea false.
+#
+#   ansible-playbook -i inventory.ini playbook-incus-cluster.yml --tags ovn -e incus_ovn_enabled=true                         # preflight
+#   ansible-playbook -i inventory.ini playbook-incus-cluster.yml --tags ovn -e incus_ovn_enabled=true -e incus_ovn_confirm=true  # instala
+incus_ovn_enabled: false
+
+# Segmentos. Los dos primeros son de la LAN (192.168.20.0/22) y deben quedar FUERA del DHCP del router
+# (192.168.20.31-192.168.23.191) y del pool de MetalLB (192.168.23.200-192.168.23.220).
+# Zona libre arriba: 192.168.23.192-192.168.23.255. Reparto:
+#   .192-.199 libre | .200-.220 MetalLB | .221-.223 libre | .224-.239 LB (/28) | .240-.249 OVN externo | .250-.255 libre
+incus_ovn_lb_routes: 192.168.23.224/28              # LB: ipv4.routes de la uplink (IP de los balanceadores y reenvíos)
+incus_ovn_external_ranges: 192.168.23.240-192.168.23.249  # OVN externo: ipv4.ovn.ranges (IP de los routers virtuales)
+incus_ovn_internal_cidr: 192.168.19.1/24            # OVN interno: ipv4.address de la red OVN (privada, con NAT)
+# Rangos que los segmentos de la LAN no pueden pisar (el preflight lo comprueba).
+incus_ovn_dhcp_range: 192.168.20.31-192.168.23.191
+incus_ovn_metallb_range: 192.168.23.200-192.168.23.220

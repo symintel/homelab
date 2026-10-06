@@ -35,8 +35,8 @@ init (`incus_storage_min_free_gb` en
 
 | Nodo | Nota |
 |---|---|
-| invincible | 120 GB SSD; leader + UI |
-| oliver | Pool local obligatorio; scheduler manual |
+| invincible | 224 GB SSD; leader + UI |
+| oliver | 120 GB SSD; pool local obligatorio; scheduler manual |
 | deborah | eMMC boot; override opcional a NVMe: `incus_storage_path: /srv/incus/storage-pools/local` |
 
 ### Limitaciones de `dir`
@@ -119,7 +119,7 @@ incus cluster group assign deborah arm64-nodes,default
 
 ## Proteger la RAM de oliver (scheduler manual)
 
-Aunque oliver tiene 15.5 GB medidos, se mantiene como nodo ligero para quorum
+oliver tiene 7.7 GB medidos, así que se mantiene como nodo ligero para quorum
 Incus sin instancias automáticas:
 
 ```bash
@@ -175,6 +175,11 @@ Acceso inicial: `https://incus.homelab.local:8443` → certificado de cliente.
 
 ### OIDC vía Dex (Fase 4)
 
+Con OIDC configurado, la pantalla de acceso de la UI ofrece **Login with SSO** (GitHub a través de Dex) y **Login with TLS** (certificado de cliente):
+
+??? note "Ver captura: acceso a Incus UI"
+    ![Pantalla de acceso de Incus UI con las opciones «Login with SSO» y «Login with TLS»](../assets/screenshots/incus-ui-login.jpg){ loading=lazy }
+
 Tras [Fase 4 — Incus UI OIDC](../implementacion/fase-4-gitops.md#incus-ui-oidc), con la CA del
 HomeLab ya instalada en el nodo (ver el aviso de abajo):
 
@@ -221,6 +226,107 @@ configurado en el HomeLab.
 Referencias:
 
 - [Incus OIDC](https://linuxcontainers.org/incus/docs/main/authentication/#openid-connect-oidc-authentication)
+
+## Balanceo de carga y OVN
+
+Incus tiene balanceadores de red (`incus network load-balancer`) y reenvíos de puertos (`incus network forward`), pero
+**los balanceadores de red solo existen en redes OVN** (Open Virtual Network, red virtual definida por software). En el
+HomeLab se despliega **OVN** (ver [Desplegar OVN y los segmentos](#desplegar-ovn-y-los-segmentos)):
+`br0` sigue siendo un bridge sin administrar para las instancias existentes, y se crean la red uplink `UPLINK` y la red OVN `ovn-lan`,
+con lo que los balanceadores de red están disponibles.
+
+!!! note "`lb01` no es el balanceador de Incus"
+    La instancia `lb01` que aparece en `incus list` es un contenedor OCI de `nginx` (de prueba). El balanceo real del
+    HomeLab está en otras capas:
+
+| Qué se balancea | Quién lo hace | Dónde |
+|---|---|---|
+| Aplicaciones de Kubernetes (Services `LoadBalancer`) | **MetalLB**, con las IP `192.168.23.200–.220` (el Gateway de Kong usa `.200`) | [Catálogo GitOps](../gitops/index.md) |
+| Control plane de los clústeres de Cluster API | **CAPN**, con su propio balanceador (`LOAD_BALANCER='lxc: {}'`, un contenedor dentro de Incus) | [Fase 6 — CAPN](../implementacion/fase-6-capn.md) |
+| API de K3s | La IP del control plane (`kube-vip` es opcional y está desactivado) | [Fase 3 — K3s](../implementacion/fase-3-k3s.md) |
+
+### ¿Conviene habilitar OVN?
+
+Qué exige OVN y qué implica para el HomeLab. Los segmentos y el despliegue están en [Desplegar OVN y los segmentos](#desplegar-ovn-y-los-segmentos).
+
+| Requisito de OVN | Estado en el HomeLab |
+|---|---|
+| Paquetes `ovn-central` (3 nodos, base de datos en alta disponibilidad), `ovn-host` y `openvswitch-switch` | Están en Debian en los tres nodos, **con las mismas versiones** (OVN 25.03 y Open vSwitch 3.5) mientras los tres nodos estén en Debian 13 |
+| Red de capa 2 compartida entre los nodos | Sí: los tres están en la misma LAN por `br0` |
+| Uplink: un bridge sin administrar o una NIC sin usar | `br0` sirve; no haría falta rehacerlo |
+| Rango de IP reservado fuera del DHCP para el router de OVN y las IP virtuales | Definido: `192.168.23.224/28` (LB) y `192.168.23.240–.249` (OVN externo), fuera del DHCP y de MetalLB. Ver [Desplegar OVN y los segmentos](#desplegar-ovn-y-los-segmentos) |
+| Instancias dentro de una red OVN | Las instancias que cuelgan de `br0` (como `lb01`, `test` y `vm01`) tienen IP de la LAN: para usar OVN hay que conectarlas a `ovn-lan` |
+| Memoria por nodo (OVS, `ovn-controller` y la base de datos central) | `oliver` tiene 7.7 GB: conviene medir allí el consumo de OVN |
+
+| A favor | En contra |
+|---|---|
+| Balanceadores y reenvíos nativos en Incus | Tres componentes nuevos por nodo y una base de datos distribuida que operar |
+| Redes virtuales aisladas por proyecto o clúster, con ACL | Hay que reservar un rango de IP nuevo y mover las instancias que quieran usarlas |
+| `LOAD_BALANCER: ovn` en CAPN para los clústeres de la Fase 6 | Solo beneficia a instancias que se muevan a una red OVN; K3s corre en los hosts y no se beneficia |
+
+### Desplegar OVN y los segmentos
+
+El rol [`incus_ovn`](https://github.com/symintel/homelab/blob/main/ansible/roles/incus_ovn/README.md), dentro de
+[`playbook-incus-cluster.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-incus-cluster.yml), instala OVN en los tres
+nodos (la base de datos en alta disponibilidad, con `invincible` creándola y los otros uniéndose), configura Incus y crea la red
+*uplink* sobre `br0` y una red OVN. Es **seguro por defecto**: sin `-e incus_ovn_confirm=true` solo hace el preflight (versión de Incus,
+paquetes, memoria libre, que `br0` exista y que las IP reservadas no respondan) y no instala nada. Con
+`incus_ovn_enabled: false` (el valor por defecto) el playbook del clúster ni siquiera lo toca.
+
+| Segmento | Valor | Dónde se configura | Variable |
+|---|---|---|---|
+| **LB** (IP de los balanceadores y reenvíos) | `192.168.23.224/28` | `ipv4.routes` de la uplink | `incus_ovn_lb_routes` |
+| **OVN externo** (una IP por router virtual) | `192.168.23.240–192.168.23.249` | `ipv4.ovn.ranges` de la uplink | `incus_ovn_external_ranges` |
+| **OVN interno** (subred privada, con NAT) | `192.168.19.1/24` | `ipv4.address` de la red `ovn-lan` | `incus_ovn_internal_cidr` |
+
+Los dos primeros son de la LAN (`192.168.20.0/22`) y deben quedar **fuera del DHCP del router** (`192.168.20.31–192.168.23.191`) y del
+pool de MetalLB (`192.168.23.200–.220`). El reparto de la zona libre alta de la LAN:
+
+| Rango | Uso |
+|---|---|
+| `192.168.23.192–.199` | Libre |
+| `192.168.23.200–.220` | **MetalLB** (21 IP; el Gateway de Kong usa `.200`) |
+| `192.168.23.221–.223` | Libre |
+| `192.168.23.224/28` (`.224–.239`) | **LB de Incus** (16 IP) |
+| `192.168.23.240–.249` | **OVN externo** (10 IP, un router virtual por red OVN) |
+| `192.168.23.250–.255` | Libre (`.255` es el broadcast de la `/22`, no se usa) |
+
+El preflight **falla si los segmentos solapan** con el DHCP, con MetalLB, entre sí o con el broadcast. El interno es privado y no toca la
+LAN: tampoco solapa con los rangos de K3s (`10.42.0.0/16` y `10.43.0.0/16`). Las instancias actuales (`lb01`, `test`, `vm01`) siguen en
+`br0`: solo las que conectes a `ovn-lan` usan OVN.
+
+```bash
+cd ansible && source ../.venv/bin/activate
+ansible-playbook -i inventory.ini playbook-incus-cluster.yml --tags ovn --skip-tags always -e incus_ovn_enabled=true                         # preflight
+ansible-playbook -i inventory.ini playbook-incus-cluster.yml --tags ovn --skip-tags always -e incus_ovn_enabled=true -e incus_ovn_confirm=true  # instala
+```
+
+Después, un balanceador de red se crea con `incus network load-balancer create ovn-lan 192.168.23.225` y su configuración.
+La dirección de escucha debe estar en el `ipv4.routes` de la uplink y no solapar con otra red en uso.
+
+**Comprobar el despliegue:** `ovn-central`, `ovn-controller` y Open vSwitch activos en los tres nodos; la base de datos Northbound en clúster
+con líder (`ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound`); un *chassis* Geneve por nodo (`ovn-sbctl show`); y
+`UPLINK` y `ovn-lan` en estado `Created` (`incus network list`).
+
+!!! warning "La base de datos de OVN no va cifrada"
+    Siguiendo la guía de Incus, el playbook publica las bases de datos de OVN por `tcp` sin SSL en la LAN de los nodos.
+    Es aceptable en un laboratorio; para producción habría que activar SSL en OVN.
+
+**Alternativas sin OVN:** MetalLB para aplicaciones, el balanceador de CAPN para los clústeres nuevos, y un contenedor con
+HAProxy o nginx más `keepalived` si se necesita una IP virtual para instancias.
+
+## Actualizar o desinstalar Incus
+
+Ambos playbooks son **seguros por defecto**: sin la variable de confirmación solo muestran qué harían.
+
+| Qué | Playbook | Confirmación | Efecto |
+|---|---|---|---|
+| Actualizar Incus a la última versión del repositorio | [`playbook-upgrade-incus.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-upgrade-incus.yml) | `-e incus_upgrade_confirm=true` | Actualiza los paquetes `incus*` nodo por nodo y espera a que los tres miembros estén `ONLINE`. No borra instancias |
+| Desinstalar el clúster (para rehacerlo) | [`playbook-uninstall-incus.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-uninstall-incus.yml) | `-e incus_uninstall_confirm=true` | **Destructivo:** borra instancias, imágenes, redes gestionadas, el pool y los paquetes. No toca `br0`, K3s ni BIND |
+
+El clúster exige **la misma versión de Incus en todos los miembros**: mientras difieren, el API queda bloqueado en los
+ya actualizados hasta que los demás los alcanzan. Por eso el playbook de actualización recorre los tres nodos seguidos y
+verifica al final. Para rehacer el clúster después de desinstalar: `playbook-bootstrap.yml` y `playbook-incus-cluster.yml`.
 
 ## Backup y snapshots (opcional)
 

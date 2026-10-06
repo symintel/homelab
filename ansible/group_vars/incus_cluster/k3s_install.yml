@@ -17,6 +17,9 @@ k3s_install:
     disable_components:
       - traefik
       - servicelb
+      # Evita dos StorageClass por defecto (local-path y openebs-hostpath). Solo aplica en
+      # instalaciones nuevas: un clúster ya instalado conserva local-path hasta reinstalar K3s.
+      - local-storage
     cluster_cidr: "10.42.0.0/16"
     service_cidr: "10.43.0.0/16"
     cni: "{{ k3s_cni }}"  # se elige con k3s_cni (arriba)

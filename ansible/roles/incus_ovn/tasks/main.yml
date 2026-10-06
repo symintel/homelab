@@ -1,0 +1,21 @@
+---
+- name: Exigir los segmentos (definidos en group_vars/incus_cluster/ovn.yml)
+  ansible.builtin.assert:
+    that:
+      - incus_ovn_lb_routes is defined
+      - incus_ovn_external_ranges is defined
+      - incus_ovn_internal_cidr is defined
+    fail_msg: "Faltan incus_ovn_lb_routes, incus_ovn_external_ranges o incus_ovn_internal_cidr (group_vars/incus_cluster/ovn.yml)"
+    quiet: true
+
+- name: Preflight
+  ansible.builtin.include_tasks: preflight.yml
+  when: incus_ovn_phase == 'preflight'
+
+- name: Instalar y configurar la base de datos de OVN
+  ansible.builtin.include_tasks: install.yml
+  when: incus_ovn_phase == 'install'
+
+- name: Redes de Incus (uplink y red OVN)
+  ansible.builtin.include_tasks: networks.yml
+  when: incus_ovn_phase == 'networks'

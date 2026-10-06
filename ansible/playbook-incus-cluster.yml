@@ -31,3 +31,41 @@
       tags: [groups, scheduler, always]
     - role: incus_ui
       tags: [ui, always]
+
+# --- OVN (opcional) -------------------------------------------------------------------------
+# Apagado por defecto (incus_ovn_enabled: false en group_vars/incus_cluster/ovn.yml): un playbook
+# completo no lo toca. Preflight:  --tags ovn -e incus_ovn_enabled=true
+# Instalar:  --tags ovn -e incus_ovn_enabled=true -e incus_ovn_confirm=true
+- name: OVN - preflight en los nodos
+  hosts: incus_cluster
+  become: true
+  gather_facts: false
+  vars:
+    incus_ovn_phase: preflight
+  roles:
+    - role: incus_ovn
+      when: incus_ovn_enabled | bool
+  tags: [ovn]
+
+- name: OVN - base de datos en cada nodo (el líder primero)
+  hosts: incus_cluster
+  become: true
+  gather_facts: false
+  serial: 1
+  vars:
+    incus_ovn_phase: install
+  roles:
+    - role: incus_ovn
+      when: incus_ovn_enabled | bool
+  tags: [ovn]
+
+- name: OVN - redes de Incus (uplink y red OVN)
+  hosts: invincible
+  become: true
+  gather_facts: false
+  vars:
+    incus_ovn_phase: networks
+  roles:
+    - role: incus_ovn
+      when: incus_ovn_enabled | bool
+  tags: [ovn]

@@ -102,7 +102,7 @@ Automatizable con: `ansible-playbook -i inventory.ini playbook-k3s.yml --limit k
 
 ## 3. Unión de workers
 
-**invincible (7.6 GB — también corre CAPN como management cluster):**
+**invincible (15.5 GB — también corre CAPN como management cluster):**
 
 ```bash
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.5+k3s1 \
@@ -111,7 +111,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.36.5+k3s1 \
   INSTALL_K3S_EXEC="agent --node-ip 192.168.20.6" sh -
 ```
 
-**oliver (15.5 GB — perfil ligero, mismo criterio que su `scheduler.instance
+**oliver (7.7 GB — perfil ligero, mismo criterio que su `scheduler.instance
 manual` en Incus):**
 
 ```bash

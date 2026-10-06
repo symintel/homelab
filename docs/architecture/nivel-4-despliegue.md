@@ -10,8 +10,8 @@ Volver a [Overview (Nivel 1–2)](overview.md).
 
 | Nodo | Hardware | RAM | IP `br0` | Incus | K3s |
 |---|---|---|---|---|---|
-| `invincible` | Lenovo M920q x86_64 | 7.6 GB | 192.168.20.6 | Leader + UI `:8443` | agent; disco Longhorn |
-| `oliver` | Lenovo M700 x86_64 | 15.5 GB | 192.168.20.7 | Quorum; scheduler **manual** | agent |
+| `invincible` | Lenovo M920q x86_64 | 15.5 GB | 192.168.20.6 | Leader + UI `:8443` | agent; disco Longhorn |
+| `oliver` | Lenovo M700 x86_64 | 7.7 GB | 192.168.20.7 | Quorum; scheduler **manual** | agent |
 | `deborah` | Orange Pi 5 Plus ARM64 | 31 GB | 192.168.20.5 | Miembro `arm64-nodes` | **server** (CP) `:6443` |
 
 !!! note "Presupuesto RAM"
@@ -39,12 +39,12 @@ flowchart TB
             k3s_deb["<span style='color:#fff'><b>K3s</b><br/><small>[Container]</small><br/>server control-plane :6443</span>"]
             incus_deb["<span style='color:#fff'><b>Incus</b><br/><small>[Container]</small><br/>arm64-nodes member</span>"]
         end
-        subgraph invincible["invincible · M920q x86_64 · 7.6 GB · .6"]
+        subgraph invincible["invincible · M920q x86_64 · 15.5 GB · .6"]
             direction LR
             k3s_inv["<span style='color:#fff'><b>K3s</b><br/><small>[Container]</small><br/>agent + Longhorn disk</span>"]
             incus_inv["<span style='color:#fff'><b>Incus</b><br/><small>[Container]</small><br/>leader + UI :8443</span>"]
         end
-        subgraph oliver["oliver · M700 x86_64 · 15.5 GB · .7"]
+        subgraph oliver["oliver · M700 x86_64 · 7.7 GB · .7"]
             direction LR
             incus_nol["<span style='color:#fff'><b>Incus</b><br/><small>[Container]</small><br/>quorum, scheduler manual</span>"]
             k3s_nol["<span style='color:#fff'><b>K3s</b><br/><small>[Container]</small><br/>agent</span>"]

@@ -64,6 +64,38 @@ para decidir el rol de control-plane:
    decisivo por sí solo).
 4. Temperatura bajo carga sostenida — throttling térmico en una SBC (Single Board Computer).
 
+## Cómo leer una ficha
+
+Esto es un extracto **real** de la ficha de `invincible`, recortado a lo que es solo
+hardware. La ficha completa también lista puertos, servicios y contenedores, y por eso no se publica.
+
+```text
+## CPU
+Arquitectura     x86_64
+Modelo           Intel(R) Core(TM) i7-8700T CPU @ 2.40GHz
+Núcleos físicos  6          Núcleos lógicos  12
+
+## Memoria
+RAM total        15.5 GB (15834 MB)          Swap total  0 MB
+
+## Almacenamiento
+sda   SSD   223.6GB   KINGSTON SA400S3   En uso
+Benchmark I/O (escritura 4k): 40960000 bytes (41 MB) copied, 0.52 s, 78.4 MB/s
+```
+
+| Campo | Qué significa y para qué sirve |
+|---|---|
+| **Núcleos físicos y lógicos** | Los lógicos cuentan los hilos (hyper-threading): 6 físicos dan 12 lógicos. Kubernetes y Incus planifican por lógicos. |
+| **RAM total** | Se da en GB que son GiB (15834 MB ÷ 1024 = 15.5). Con 0 MB de swap, si se acaba la RAM el kernel mata procesos. |
+| **Tipo** | `HDD (rotacional)` es un disco mecánico: mucho más lento y no sirve para etcd. También distingue `SSD`, `NVMe`, `eMMC/SD` (la memoria de las placas ARM), `flash SPI` y `zram` (RAM comprimida, que no es un disco). Aquí no hay discos mecánicos. |
+| **Benchmark de escritura 4k** | Escribe 40 MB en bloques de 4 KB **directo al disco**. Sirve para comparar nodos entre sí, no como cifra absoluta. |
+
+!!! warning "El benchmark no es la latencia de fsync"
+    Para etcd lo que importa es la **latencia de fsync** (cuánto tarda en confirmarse cada escritura), que se mide con
+    `fio --fsync=1`. El `dd` de 4k da una idea del orden de magnitud: 59.5 MB/s en la eMMC de `deborah` frente a 78.4 MB/s
+    en el SSD de `invincible`. Una cifra muy distinta de otra corrida casi siempre es una prueba mal hecha (caché de
+    por medio), no un disco más rápido.
+
 Si algún resultado contradice el rol asignado en
 [Inventario de hardware](inventory.md), ese documento es el que se
 actualiza — los reportes de `ansible/reports/` no se versionan.

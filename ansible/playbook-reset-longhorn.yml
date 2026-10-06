@@ -1,0 +1,296 @@
+---
+# Borra Longhorn por completo (recursos del clúster y datos de los nodos) para reinstalarlo limpio.
+#
+# DESTRUCTIVO: borra los PVC con StorageClass de Longhorn, TODOS sus volúmenes y réplicas, las CRD,
+# el namespace longhorn-system y el contenido de /var/lib/longhorn en cada nodo. No hay vuelta atrás.
+# Úsalo solo si lo que guarda Longhorn se puede perder (en el HomeLab: el caché de ARC).
+#
+# Orden completo (ver docs/storage/index.md):
+#   1. gitops: comentar `longhorn` y `arc-runners` en bootstrap/root-appset.yaml -> push
+#      (así Argo CD no recrea lo que este playbook borra).
+#   2. Este playbook, primero sin confirmación (preflight) y después con ella.
+#   3. gitops: descomentar `longhorn` y `arc-runners` -> push (Argo CD instala Longhorn limpio).
+#
+# Ejecutar (desde ansible/, con KUBECONFIG apuntando al clúster):
+#   ansible-playbook -i inventory.ini playbook-reset-longhorn.yml                                # solo preflight
+#   ansible-playbook -i inventory.ini playbook-reset-longhorn.yml -e longhorn_reset_confirm=true
+#
+# Variables (-e nombre=valor): longhorn_reset_confirm (false), longhorn_data_path (/var/lib/longhorn).
+
+- name: Longhorn - clúster (preflight y borrado de recursos)
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  vars:
+    longhorn_reset_confirm: false
+    longhorn_ns: longhorn-system
+  environment:
+    KUBECONFIG: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') ~ '/.kube/homelab-k3s.yaml', true) }}"
+  tasks:
+    - name: El clúster debe responder (si no, nada de lo siguiente es fiable)
+      ansible.builtin.command: kubectl get nodes --no-headers
+      register: lh_nodes
+      changed_when: false
+      tags: [preflight, always]
+
+    - name: Preflight - qué se perdería
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "== PVC con StorageClass de Longhorn"
+        kubectl get pvc -A -o json | python3 -c "
+        import json,sys
+        sc={s for s in sys.argv[1:]}
+        for p in json.load(sys.stdin)['items']:
+            if p['spec'].get('storageClassName','') in sc:
+                print(p['metadata']['namespace']+'/'+p['metadata']['name'], p['spec']['resources']['requests']['storage'])
+        " $(kubectl get sc -o jsonpath='{range .items[?(@.provisioner=="driver.longhorn.io")]}{.metadata.name}{"\n"}{end}')
+        echo "== volúmenes de Longhorn"
+        kubectl get volumes.longhorn.io -n {{ longhorn_ns }} --no-headers 2>&1 | awk '{print $1,$3,$4,$6}'
+        echo "== pods que montan el PVC del caché (no deben estar corriendo)"
+        kubectl get pods -A -o json | python3 -c "
+        import json,sys
+        for p in json.load(sys.stdin)['items']:
+            if p['status'].get('phase') not in ('Running','Pending'): continue
+            for v in p['spec'].get('volumes',[]):
+                c = v.get('persistentVolumeClaim')
+                if c: print(p['metadata']['namespace']+'/'+p['metadata']['name'], c['claimName'])
+        " | grep -i "cache" || true
+        echo "== Application longhorn / arc-runners en Argo CD (deben haber desaparecido tras el push 1)"
+        kubectl get application -n argocd longhorn arc-runners --no-headers 2>&1 | awk '{print $1,$2,$3}'
+      args:
+        executable: /bin/bash
+      register: lh_pre
+      changed_when: false
+      failed_when: false
+      tags: [preflight, always]
+
+    - name: Preflight - mostrar
+      ansible.builtin.debug:
+        var: lh_pre.stdout_lines
+      tags: [preflight, always]
+
+    - name: Preflight - Application de Argo CD que todavía gestionan lo que se va a borrar
+      ansible.builtin.command: kubectl get application -n argocd -o name
+      register: lh_apps
+      changed_when: false
+      failed_when: false
+      tags: [preflight, always]
+
+    - name: Aviso - sin confirmación no se cambia nada
+      ansible.builtin.debug:
+        msg: "Modo seguro: no se borró nada. Para borrar de verdad: -e longhorn_reset_confirm=true"
+      when: not (longhorn_reset_confirm | bool)
+      tags: [preflight, always]
+
+    - name: Borrar Longhorn del clúster
+      when: longhorn_reset_confirm | bool
+      tags: [reset]
+      block:
+        - name: Exigir que Argo CD ya no gestione longhorn ni arc-runners (si no los recrearía)
+          ansible.builtin.assert:
+            that:
+              - "'application.argoproj.io/arc-runners' not in lh_apps.stdout_lines"
+            fail_msg: >-
+              La Application arc-runners sigue en Argo CD: recrearía el PVC del caché mientras se borra Longhorn.
+              Comenta `arc-runners` (y `longhorn`) en gitops/bootstrap/root-appset.yaml, haz push y espera a que desaparezcan.
+            quiet: true
+
+        - name: Soltar la Application longhorn si quedó atascada borrándose (finalizadores de Argo CD)
+          ansible.builtin.shell: |
+            kubectl get application -n argocd longhorn >/dev/null 2>&1 || exit 0
+            kubectl patch application -n argocd longhorn --type merge -p '{"metadata":{"finalizers":null}}'
+            kubectl delete application -n argocd longhorn --wait=false --ignore-not-found
+          args:
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Confirmar el borrado en Longhorn (setting deleting-confirmation-flag)
+          ansible.builtin.command: >-
+            kubectl -n {{ longhorn_ns }} patch settings.longhorn.io deleting-confirmation-flag --type merge -p '{"value":"true"}'
+          changed_when: true
+          failed_when: false
+
+        - name: Borrar los PVC que usan StorageClass de Longhorn
+          ansible.builtin.shell: |
+            set -o pipefail
+            scs=$(kubectl get sc -o jsonpath='{range .items[?(@.provisioner=="driver.longhorn.io")]}{.metadata.name}{"\n"}{end}')
+            kubectl get pvc -A -o json | python3 -c "
+            import json,sys
+            sc=set(sys.argv[1:])
+            for p in json.load(sys.stdin)['items']:
+                if p['spec'].get('storageClassName','') in sc: print(p['metadata']['namespace'], p['metadata']['name'])
+            " $scs | while read ns n; do
+              kubectl delete pvc -n "$ns" "$n" --wait=false
+              kubectl patch pvc -n "$ns" "$n" --type merge -p '{"metadata":{"finalizers":null}}' || true
+            done
+          args:
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Quitar finalizadores y borrar todos los recursos de las CRD de Longhorn
+          ansible.builtin.shell: |
+            set -o pipefail
+            for crd in $(kubectl get crd -o name | grep 'longhorn.io' || true); do
+              kind=${crd#*/}
+              for r in $(kubectl get "$kind" -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+                ns=${r%%/*}; n=${r#*/}
+                kubectl patch "$kind" -n "$ns" "$n" --type merge -p '{"metadata":{"finalizers":null}}' >/dev/null 2>&1 || true
+              done
+              kubectl delete "$kind" -A --all --wait=false >/dev/null 2>&1 || true
+            done
+          args:
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Borrar el namespace de Longhorn
+          ansible.builtin.command: kubectl delete namespace {{ longhorn_ns }} --wait=false --ignore-not-found
+          changed_when: true
+
+        - name: Borrar las CRD de Longhorn
+          ansible.builtin.shell: |
+            set -o pipefail
+            kubectl get crd -o name | { grep 'longhorn.io' || true; } | xargs -r kubectl delete --wait=false
+          args:
+            executable: /bin/bash
+          changed_when: true
+          failed_when: false
+
+        - name: Borrar lo que queda a nivel de clúster (RBAC, webhooks, CSIDriver, PriorityClass, StorageClass del chart)
+          ansible.builtin.shell: |
+            set -o pipefail
+            kubectl delete validatingwebhookconfiguration longhorn-webhook-validator --ignore-not-found
+            kubectl delete mutatingwebhookconfiguration longhorn-webhook-mutator --ignore-not-found
+            kubectl delete csidriver driver.longhorn.io --ignore-not-found
+            kubectl delete priorityclass longhorn-critical --ignore-not-found
+            kubectl delete storageclass longhorn longhorn-static --ignore-not-found
+            kubectl get clusterrole,clusterrolebinding -o name | { grep -E '/longhorn' || true; } | xargs -r kubectl delete --ignore-not-found
+          args:
+            executable: /bin/bash
+          changed_when: true
+          failed_when: false
+
+        - name: Esperar a que el namespace desaparezca (si queda atascado, se limpian sus finalizadores)
+          ansible.builtin.shell: |
+            set -o pipefail
+            for i in $(seq 1 24); do
+              kubectl get ns {{ longhorn_ns }} >/dev/null 2>&1 || { echo "namespace borrado"; exit 0; }
+              sleep 5
+            done
+            kubectl get ns {{ longhorn_ns }} -o json | python3 -c "import json,sys; d=json.load(sys.stdin); d['spec']['finalizers']=[]; print(json.dumps(d))" \
+              | kubectl replace --raw "/api/v1/namespaces/{{ longhorn_ns }}/finalize" -f - >/dev/null
+            sleep 5
+            kubectl get ns {{ longhorn_ns }} >/dev/null 2>&1 && { echo "el namespace sigue"; exit 1; } || echo "namespace borrado (a la fuerza)"
+          args:
+            executable: /bin/bash
+          register: lh_ns
+          changed_when: true
+
+        - name: Segunda pasada - recursos huérfanos (CRD, PVC y PV que quedan con finalizadores sin controlador)
+          ansible.builtin.shell: |
+            set -o pipefail
+            # Con el namespace borrado el API rechaza modificar los recursos que quedaron dentro
+            # ("namespaces longhorn-system not found"): se recrea vacío mientras se limpian.
+            kubectl get ns {{ longhorn_ns }} >/dev/null 2>&1 || kubectl create ns {{ longhorn_ns }}
+            # Con los pods ya borrados nadie vuelve a poner los finalizadores.
+            for crd in $(kubectl get crd -o name | { grep 'longhorn.io' || true; }); do
+              kind=${crd#*/}
+              for r in $(kubectl get "$kind" -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+                ns=${r%%/*}; n=${r#*/}
+                kubectl patch "$kind" -n "$ns" "$n" --type merge -p '{"metadata":{"finalizers":null}}' >/dev/null \
+                  || echo "no se pudo quitar el finalizador de $kind $ns/$n"
+              done
+            done
+            for pvc in $(kubectl get pvc -A -o json | python3 -c "
+            import json,sys
+            for p in json.load(sys.stdin)['items']:
+                if p['spec'].get('storageClassName') in ('longhorn','longhorn-static','longhorn-mixto'):
+                    print(p['metadata']['namespace']+'/'+p['metadata']['name'])
+            "); do
+              kubectl patch pvc -n "${pvc%%/*}" "${pvc#*/}" --type merge -p '{"metadata":{"finalizers":null}}' || true
+            done
+            for pv in $(kubectl get pv -o json | python3 -c "
+            import json,sys
+            for p in json.load(sys.stdin)['items']:
+                if (p['spec'].get('csi') or {}).get('driver') == 'driver.longhorn.io': print(p['metadata']['name'])
+            "); do
+              kubectl patch pv "$pv" --type merge -p '{"metadata":{"finalizers":null}}' || true
+              kubectl delete pv "$pv" --wait=false --ignore-not-found
+            done
+            for i in $(seq 1 24); do
+              left=$(kubectl get crd -o name | { grep -c 'longhorn.io' || true; })
+              [ "$left" = 0 ] && break
+              sleep 5
+            done
+            kubectl delete ns {{ longhorn_ns }} --wait=false --ignore-not-found
+            echo "CRD de Longhorn: $left"
+            [ "$left" = 0 ]
+          args:
+            executable: /bin/bash
+          register: lh_orphans
+          changed_when: true
+
+        - name: Resultado de la segunda pasada
+          ansible.builtin.debug:
+            var: lh_orphans.stdout_lines
+
+        - name: Resultado en el clúster
+          ansible.builtin.debug:
+            var: lh_ns.stdout_lines
+
+- name: Longhorn - datos en los nodos
+  hosts: incus_cluster
+  become: true
+  gather_facts: false
+  vars:
+    longhorn_reset_confirm: false
+    longhorn_data_path: /var/lib/longhorn
+  tasks:
+    - name: Preflight - contenido de los datos de Longhorn
+      ansible.builtin.shell: |
+        set -o pipefail
+        findmnt -no TARGET,SOURCE "{{ longhorn_data_path }}" || echo "{{ longhorn_data_path }} no es un punto de montaje propio (está en el disco raíz)"
+        du -sh {{ longhorn_data_path }} 2>/dev/null
+        ls -A {{ longhorn_data_path }} 2>/dev/null | head
+      args:
+        executable: /bin/bash
+      register: lh_node
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      tags: [preflight, always]
+
+    - name: Preflight - mostrar
+      ansible.builtin.debug:
+        var: lh_node.stdout_lines
+      tags: [preflight, always]
+
+    - name: Borrar los datos de Longhorn del nodo
+      when: longhorn_reset_confirm | bool
+      tags: [reset]
+      block:
+        - name: La ruta debe ser exactamente la esperada
+          ansible.builtin.assert:
+            that: longhorn_data_path == '/var/lib/longhorn'
+            fail_msg: "Por seguridad solo se borra /var/lib/longhorn (recibido: {{ longhorn_data_path }})"
+            quiet: true
+
+        - name: Desmontar lo que quede montado bajo la ruta
+          ansible.builtin.shell: |
+            set -o pipefail
+            findmnt -rn -o TARGET | grep '^{{ longhorn_data_path }}/' | sort -r | xargs -r -n1 umount -l || true
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+        - name: Vaciar el contenido (se conserva el directorio)
+          ansible.builtin.shell: find {{ longhorn_data_path }} -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          args:
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Verificar que quedó vacío
+          ansible.builtin.command: ls -A {{ longhorn_data_path }}
+          register: lh_empty
+          changed_when: false
+          failed_when: lh_empty.stdout | length > 0

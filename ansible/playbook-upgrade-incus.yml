@@ -1,0 +1,118 @@
+---
+# Actualiza Incus a la última versión del repositorio en los 3 nodos del clúster.
+#
+# El clúster exige la misma versión en todos los miembros: mientras los nodos
+# difieren, el API queda bloqueado en los ya actualizados hasta que los demás
+# alcanzan la versión. Por eso se actualizan todos seguidos (serial: 1) y la
+# comprobación de salud va al final, no entre nodos.
+#
+# No borra nada: solo actualiza los paquetes incus* ya instalados. El reinicio
+# del demonio puede cortar brevemente el API; las instancias siguen corriendo.
+#
+# Seguro por defecto: sin -e incus_upgrade_confirm=true solo muestra versiones.
+#
+# Ejecutar:
+#   ansible-playbook -i inventory.ini playbook-upgrade-incus.yml                              # solo preflight
+#   ansible-playbook -i inventory.ini playbook-upgrade-incus.yml -e incus_upgrade_confirm=true
+
+- name: Actualizar Incus en el clúster
+  hosts: incus_cluster
+  become: true
+  gather_facts: false
+  serial: 1
+
+  vars:
+    incus_upgrade_confirm: false
+
+  tasks:
+    - name: Paquetes incus instalados, versión instalada y candidata
+      ansible.builtin.shell: |
+        set -o pipefail
+        pkgs=$(dpkg-query -W -f='${db:Status-Abbrev} ${binary:Package}\n' 'incus*' 2>/dev/null | awk '$1=="ii"{print $2}')
+        for p in $pkgs; do
+          apt-cache policy "$p" | awk -v p="$p" '/Installed:/{i=$2} /Candidate:/{c=$2} END{print p, i, c}'
+        done
+      args:
+        executable: /bin/bash
+      register: incus_pkgs
+      changed_when: false
+      check_mode: false
+      tags: [preflight, always]
+
+    - name: Mostrar versiones (paquete instalada candidata)
+      ansible.builtin.debug:
+        var: incus_pkgs.stdout_lines
+      tags: [preflight, always]
+
+    - name: Estado del clúster antes de actualizar
+      ansible.builtin.command: incus cluster list --format csv
+      register: incus_cluster_before
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      tags: [preflight, always]
+
+    - name: Mostrar el estado del clúster
+      ansible.builtin.debug:
+        var: incus_cluster_before.stdout_lines
+      tags: [preflight, always]
+
+    - name: Aviso - sin confirmación no se cambia nada
+      ansible.builtin.debug:
+        msg: "Modo seguro: no se modificó nada. Para actualizar: -e incus_upgrade_confirm=true"
+      when: not (incus_upgrade_confirm | bool)
+      tags: [preflight, always]
+
+    - name: Actualizar los paquetes de Incus (sin instalar nada nuevo)
+      ansible.builtin.apt:
+        name: "{{ incus_pkgs.stdout_lines | map('split', ' ') | map('first') | list }}"
+        state: latest  # noqa: package-latest
+        only_upgrade: true
+        update_cache: true
+      when:
+        - incus_upgrade_confirm | bool
+        - incus_pkgs.stdout_lines | length > 0
+      tags: [upgrade]
+
+    - name: Esperar a que el servicio de Incus responda
+      ansible.builtin.command: incus version
+      register: incus_version
+      retries: 12
+      delay: 10
+      until: incus_version.rc == 0
+      changed_when: false
+      when: incus_upgrade_confirm | bool
+      tags: [upgrade]
+
+    - name: Versión en este nodo
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ incus_version.stdout_lines | default([]) }}"
+      when: incus_upgrade_confirm | bool
+      tags: [upgrade]
+
+# Verificación final: con todos en la misma versión el clúster vuelve a ONLINE.
+- name: Verificar el clúster
+  hosts: invincible
+  become: true
+  gather_facts: false
+  vars:
+    incus_upgrade_confirm: false
+  tasks:
+    - name: Los 3 miembros deben estar ONLINE
+      ansible.builtin.command: incus cluster list --format csv
+      register: incus_cluster_after
+      retries: 18
+      delay: 10
+      until: >-
+        incus_cluster_after.rc == 0
+        and (incus_cluster_after.stdout_lines | select('search', 'ONLINE') | list | length)
+            == (groups['incus_cluster'] | length)
+      changed_when: false
+      when: incus_upgrade_confirm | bool
+      tags: [verify]
+
+    - name: Estado final del clúster
+      ansible.builtin.debug:
+        var: incus_cluster_after.stdout_lines
+      when: incus_upgrade_confirm | bool
+      tags: [verify]

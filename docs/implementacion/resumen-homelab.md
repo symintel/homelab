@@ -58,8 +58,8 @@ curl -kI https://incus.homelab.local:8443
 
 | Hostname | IP `br0` | Incus | K3s | Notas |
 |---|---|---|---|---|
-| invincible | 192.168.20.6 | Leader + UI | agent | RAM ajustada; Longhorn disk |
-| oliver | 192.168.20.7 | Quorum, scheduler manual | agent | Sin instancias automáticas |
+| invincible | 192.168.20.6 | Leader + UI | agent | 15.5 GB; Longhorn disk |
+| oliver | 192.168.20.7 | Quorum, scheduler manual | agent | 7.7 GB: RAM ajustada; sin instancias automáticas |
 | deborah | 192.168.20.5 | arm64-nodes | **server** (CP) | 31 GB RAM |
 
 Storage Incus: pool `local`, driver `dir`, perfil `default` → NIC (tarjeta de red) `br0`.

@@ -161,6 +161,7 @@ nav:
       - Apéndice — Desinstalar K3s: implementacion/apendice-desinstalar.md
   - Operación:
       - Procedimientos de rutina: operacion/index.md
+      - URLs y accesos de los productos: operacion/urls-y-accesos.md
       - Agregar un repo: operacion/agregar-repo.md
       - Agregar un nodo: operacion/agregar-nodo.md
       - Sacar o reemplazar un nodo: operacion/sacar-nodo.md
@@ -171,6 +172,7 @@ nav:
       - Cambiar el controlador de Gateway: operacion/cambiar-gateway.md
       - Caché de los runners (ARC): operacion/cache-arc.md
       - Calico (CNI) con ArgoCD: operacion/actualizar-calico.md
+      - Actualizar Debian en deborah (12 a 13): operacion/actualizar-debian-deborah.md
       - Rotar credenciales: operacion/rotar-credenciales.md
       - Pipeline de gitops: operacion/pipeline-gitops.md
   - Arquitectura:

@@ -71,6 +71,16 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 | **`argocd/config/`** (`argocd`) | [Dex](https://dexidp.io/docs/) | Connector GitHub + staticClients vCluster e Incus UI. |
 | [`argocd/secrets/`](https://github.com/symintel/gitops/tree/main/argocd/secrets) | [1Password SDK](https://github.com/1Password/onepassword-sdk-python) | OAuth desde app local |
 
+**Cómo se ve.** La UI de ArgoCD en `https://argocd.homelab.local` pide iniciar sesión con GitHub (Dex):
+
+??? note "Ver captura: inicio de sesión de Argo CD"
+    ![Pantalla de inicio de sesión de Argo CD con el botón «Log in via GitHub»](../assets/screenshots/argocd-login.jpg){ loading=lazy }
+
+La aplicación raíz `homelab-root` agrupa todas las demás: en su vista de árbol, cada recuadro «application» es una de las Application del catálogo.
+
+??? note "Ver captura: árbol de homelab-root"
+    ![Árbol de la aplicación homelab-root en Argo CD, con las aplicaciones arc-controller, arc-runners, argocd y argocd-route sincronizadas y sanas](../assets/screenshots/argocd-homelab-root.jpg){ loading=lazy }
+
 ### Wave 3 — Operaciones
 
 | Application | Producto | Para qué sirve |
@@ -122,6 +132,8 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 |---|---|
 | Application `Degraded` | `kubectl describe application -n argocd <nombre>` |
 | `arc-runners` `OutOfSync` y el pod del listener se reinicia cada pocos minutos | ArgoCD poda en bucle los recursos que crea el controlador de ARC (`AutoscalingListener`, `Role`, `RoleBinding`: copian la etiqueta `app.kubernetes.io/instance`). Se corrige con `application.resourceTrackingMethod: annotation` en `argocd-cm` (ya está en `gitops/argocd/config`). Comprueba: `kubectl -n argocd get cm argocd-cm -o jsonpath='{.data.application\.resourceTrackingMethod}'` → `annotation`; si no, sincroniza `argocd` y reinicia el controlador: `kubectl -n argocd rollout restart statefulset argocd-application-controller` |
+| `openebs` `OutOfSync` con el sync en `Running` | El Job del hook `pre-upgrade` del chart no termina y Argo CD lo espera. En OpenEBS usa una imagen (`bitnami/kubectl:1.25.15`) que ya no existe en Docker Hub; el hook solo migra de v3 a v4 y está desactivado en `argocd/apps/openebs.yaml` (`preUpgradeHook.enabled: false`). Si el Job viejo sigue ahí con el finalizador `argocd.argoproj.io/hook-finalizer`, cancela la operación (`status.operationState.phase: Terminating`) y quítale el finalizador |
+| `longhorn` con el sync en `Running`: el Job `longhorn-pre-upgrade` no tiene pod (`serviceaccount "longhorn-service-account" not found`) | En una **instalación limpia** con Argo CD ese Job corre antes que su ServiceAccount y el sync espera para siempre: desactívalo con `preUpgradeChecker.jobEnabled: false` (ya está así en `argocd/apps/longhorn.yaml`). Si cancelas la operación (`status.operationState.phase: Terminating`), quita el finalizador del Job y refresca. En una **actualización** el Job sí funciona y falla con razón si el salto no está soportado: lee `kubectl logs -n longhorn-system job/longhorn-pre-upgrade` antes de desactivarlo |
 | Gateway sin dirección | `metallb-config` sync, pool libre en LAN |
 | SSO vCluster falla | `playbook-dex-oauth-secrets.yml --tags ensure,argocd,vcluster`; restart Dex |
 | Incus UI SSO falla | `incus config get oidc.issuer` / `oidc.client.id` en invincible; `invincible` debe confiar en la CA del HomeLab (`--tags incus_ca`); cliente `incus-ui` público en `dex.config`; restart Dex |

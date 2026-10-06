@@ -1,0 +1,69 @@
+---
+# En el líder del clúster Incus.
+- name: Estado del clúster de la base de datos de OVN
+  ansible.builtin.command: ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+  register: incus_ovn_cluster
+  changed_when: false
+  failed_when: false
+  when: incus_ovn_confirm | bool
+
+- name: Mostrar el estado de la base de datos
+  ansible.builtin.debug:
+    msg: "{{ incus_ovn_cluster.stdout_lines | select('search', 'Status|Role|Servers|Leader|Connections') | list }}"
+  when: incus_ovn_confirm | bool
+
+- name: Configurar la conexión de Incus a OVN
+  ansible.builtin.command: "incus config set network.ovn.northbound_connection {{ incus_ovn_nb_conn }}"
+  changed_when: true
+  when: incus_ovn_confirm | bool
+
+- name: Crear la red uplink en cada miembro (pendiente)
+  ansible.builtin.shell: |
+    incus network show {{ incus_ovn_uplink_name }} >/dev/null 2>&1 && exit 0
+    for m in {{ groups['incus_cluster'] | join(' ') }}; do
+      incus network create {{ incus_ovn_uplink_name }} --type=physical parent={{ incus_ovn_uplink_parent }} --target=$m
+    done
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: incus_ovn_confirm | bool
+
+- name: Confirmar la red uplink (segmento LB en ipv4.routes, segmento OVN externo en ipv4.ovn.ranges)
+  ansible.builtin.shell: |
+    set -o pipefail
+    incus network show {{ incus_ovn_uplink_name }} | grep -q '^status: Created' && exit 0
+    incus network create {{ incus_ovn_uplink_name }} --type=physical \
+      ipv4.gateway={{ incus_ovn_uplink_gateway }} \
+      ipv4.ovn.ranges={{ incus_ovn_external_ranges }} \
+      ipv4.routes={{ incus_ovn_lb_routes }} \
+      dns.nameservers={{ incus_ovn_dns }}
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: incus_ovn_confirm | bool
+
+- name: Crear la red OVN (segmento interno, con NAT)
+  ansible.builtin.shell: |
+    incus network show {{ incus_ovn_network_name }} >/dev/null 2>&1 && exit 0
+    incus network create {{ incus_ovn_network_name }} --type=ovn network={{ incus_ovn_uplink_name }} \
+      ipv4.address={{ incus_ovn_internal_cidr }} ipv4.nat=true ipv6.address=none
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: incus_ovn_confirm | bool
+
+- name: Resultado
+  ansible.builtin.shell: |
+    set -o pipefail
+    incus network list --format csv -c ntm4
+    incus network show {{ incus_ovn_uplink_name }} | grep -E 'ipv4\.|status'
+  args:
+    executable: /bin/bash
+  register: incus_ovn_result
+  changed_when: false
+  when: incus_ovn_confirm | bool
+
+- name: Mostrar el resultado
+  ansible.builtin.debug:
+    var: incus_ovn_result.stdout_lines
+  when: incus_ovn_confirm | bool

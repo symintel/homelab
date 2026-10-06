@@ -75,6 +75,11 @@ Profundización: [CAPN](../capn/index.md) · [Secretos](../secrets/index.md)
 
 La [Fase 5 — vCluster](fase-5-vcluster.md) es opcional: no hace falta para esta fase.
 
+!!! note "Balanceador del control plane"
+    Cada clúster de CAPN crea su propio balanceador para el API (`LOAD_BALANCER='lxc: {}'`, un contenedor dentro de
+    Incus). Los balanceadores de red de Incus solo existen con OVN, que el HomeLab no usa: ver
+    [Balanceo de carga y OVN](../incus/cluster-setup.md#balanceo-de-carga-y-ovn).
+
 ## Ejecutar
 
 ### Instalar clusterctl e init CAPN

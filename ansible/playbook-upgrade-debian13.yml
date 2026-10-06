@@ -1,0 +1,619 @@
+---
+# Actualiza deborah (Orange Pi 5 Plus, ARM64) de Debian 12 (bookworm) a Debian 13 (trixie).
+#
+# POR DEFECTO NO CAMBIA NADA: sin -e upgrade_confirm=true solo corre el preflight (comprobaciones
+# y una simulación contra los repositorios de trixie que no toca los de verdad).
+#
+#   cd ansible
+#   ansible-playbook -i inventory.ini playbook-upgrade-debian13.yml                       # solo preflight
+#   ansible-playbook -i inventory.ini playbook-upgrade-debian13.yml -e upgrade_confirm=true   # actualiza
+#   ansible-playbook -i inventory.ini playbook-upgrade-debian13.yml --tags verify         # comprobar después
+#
+# Tags: preflight | backup | upgrade | gate | reboot | verify | cleanup
+# Variables (con -e nombre=valor; NO uses -e con puntos): upgrade_confirm, upgrade_reboot,
+# upgrade_autoremove, upgrade_skip_incus_check, upgrade_debian_mirror, upgrade_security_mirror.
+#
+# Lo que hay que saber antes (detalle en docs/operacion/actualizar-debian-deborah.md):
+#   - deborah es el control plane de K3s, el DNS de la LAN (BIND) y miembro de Incus: durante la
+#     actualización el API de K3s y el DNS NO están disponibles (los pods de los otros nodos siguen).
+#   - Corre el kernel del fabricante (5.10 rockchip) con u-boot: este playbook NO lo cambia. El riesgo
+#     principal es que el equipo no arranque tras el reinicio; por eso hay una "compuerta" que valida
+#     el initrd y el arranque ANTES de reiniciar. Ten acceso físico (HDMI/serie) y, si puedes, una
+#     imagen de la eMMC.
+#   - Incus debe estar ya alineado en los tres nodos (misma versión): si el repositorio de trixie trae
+#     otra versión que la instalada, el playbook se detiene.
+- name: Actualizar deborah a Debian 13 (trixie)
+  hosts: deborah
+  become: true
+  gather_facts: true
+  vars:
+    upgrade_confirm: false
+    upgrade_reboot: true
+    upgrade_autoremove: false
+    upgrade_skip_incus_check: false
+    upgrade_debian_mirror: http://ftp.cl.debian.org/debian
+    upgrade_security_mirror: http://security.debian.org/debian-security
+    upgrade_min_free_root_mb: 6000
+    upgrade_min_free_boot_mb: 300
+    upgrade_backup_dir: /var/backups/pre-trixie
+    upgrade_fetch_dir: "{{ playbook_dir }}/backups"
+    # Paquetes cuya eliminación por la actualización haría fallar el arranque o el HomeLab.
+    upgrade_protected_names: 'linux-image|linux-dtb|linux-u-boot|orangepi|u-boot-tools|initramfs-tools|k3s|incus|lxcfs|bind9|openssh-server|netplan'
+    upgrade_sim_dir: /var/tmp/trixie-sim
+    upgrade_apt_env:
+      DEBIAN_FRONTEND: noninteractive
+      APT_LISTCHANGES_FRONTEND: none
+      NEEDRESTART_MODE: a
+    upgrade_apt_opts: >-
+      -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold
+  tasks:
+    # ------------------------------------------------------------------ PREFLIGHT (solo lectura)
+    - name: Preflight (solo lectura)
+      tags: [preflight]
+      block:
+        - name: Comprobar que es deborah en Debian 12 con kernel suficiente
+          ansible.builtin.assert:
+            that:
+              - ansible_facts['distribution'] == 'Debian'
+              - ansible_facts['distribution_release'] == 'bookworm'
+              - ansible_facts['architecture'] == 'aarch64'
+              - ansible_facts['kernel'].split('-')[0] is version('5.4', '>=')
+            fail_msg: >-
+              Este playbook es para Debian 12 (bookworm) en ARM64 con kernel >= 5.4. Detectado:
+              {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_release'] }}
+              {{ ansible_facts['architecture'] }} kernel {{ ansible_facts['kernel'] }}.
+            quiet: true
+
+        - name: Leer espacio libre en / y /boot (MB)
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "root=$(df -m --output=avail / | tail -1 | tr -d ' ')"
+            echo "boot=$(df -m --output=avail /boot | tail -1 | tr -d ' ')"
+          args:
+            executable: /bin/bash
+          register: upgrade_space
+          changed_when: false
+          check_mode: false
+
+        - name: Comprobar el espacio libre
+          ansible.builtin.assert:
+            that:
+              - (upgrade_space.stdout_lines[0] | regex_replace('^root=', '') | int) >= upgrade_min_free_root_mb
+              - (upgrade_space.stdout_lines[1] | regex_replace('^boot=', '') | int) >= upgrade_min_free_boot_mb
+            fail_msg: >-
+              Poco espacio libre ({{ upgrade_space.stdout_lines | join(', ') }}). Se piden
+              {{ upgrade_min_free_root_mb }} MB en / y {{ upgrade_min_free_boot_mb }} MB en /boot.
+            quiet: true
+
+        - name: Revisar que dpkg no tenga paquetes a medias
+          ansible.builtin.command: dpkg --audit
+          register: upgrade_audit
+          changed_when: false
+          check_mode: false
+
+        - name: Fallar si dpkg reporta problemas
+          ansible.builtin.assert:
+            that: upgrade_audit.stdout | trim == ''
+            fail_msg: "dpkg --audit reporta problemas; arréglalos antes: {{ upgrade_audit.stdout }}"
+            quiet: true
+
+        - name: Leer paquetes retenidos y paquetes que no son de Debian
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "--- retenidos (apt-mark hold):"; apt-mark showhold
+            echo "--- no son de Debian:"
+            { apt list '?narrow(?installed, ?not(?origin(Debian)))' 2>/dev/null | grep -v '^Listing' | cut -d/ -f1; } || true
+          args:
+            executable: /bin/bash
+          register: upgrade_foreign
+          changed_when: false
+          check_mode: false
+
+        - name: Mostrar paquetes retenidos y ajenos a Debian
+          ansible.builtin.debug:
+            msg: "{{ upgrade_foreign.stdout_lines }}"
+
+        - name: Comprobar el arranque (u-boot, initrd gzip, UUID de la raíz)
+          ansible.builtin.shell: |
+            set -o pipefail
+            fail=0
+            for f in /boot/Image /boot/boot.scr /boot/uInitrd /boot/orangepiEnv.txt /etc/initramfs/post-update.d/99-uboot; do
+              [ -e "$f" ] || { echo "FALTA $f"; fail=1; }
+            done
+            grep -q '^COMPRESS=gzip' /etc/initramfs-tools/initramfs.conf || { echo "initramfs.conf sin COMPRESS=gzip (99-uboot declara gzip)"; fail=1; }
+            mkimage -l /boot/uInitrd 2>/dev/null | grep -q 'gzip compressed' || { echo "uInitrd no es gzip o no es válido"; fail=1; }
+            root_uuid=$(findmnt -no UUID /)
+            grep -q "^rootdev=UUID=${root_uuid}$" /boot/orangepiEnv.txt || { echo "rootdev de orangepiEnv.txt != UUID de / (${root_uuid})"; fail=1; }
+            [ "$fail" = 0 ] && echo "arranque OK"
+            exit $fail
+          args:
+            executable: /bin/bash
+          register: upgrade_boot_check
+          changed_when: false
+          check_mode: false
+          failed_when: upgrade_boot_check.rc != 0
+
+        - name: Estado de los servicios de deborah (informativo)
+          ansible.builtin.shell: |
+            set -o pipefail
+            for s in k3s named incus ssh; do printf '%s=%s ' "$s" "$(systemctl is-active $s 2>&1)"; done; echo
+            k3s kubectl get nodes --no-headers 2>/dev/null | awk '{print "nodo " $1 ": " $2}'
+            incus cluster list -f csv -c ns 2>/dev/null | awk -F, '{print "incus " $1 ": " $2}'
+          args:
+            executable: /bin/bash
+          register: upgrade_services
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: Mostrar el estado de los servicios
+          ansible.builtin.debug:
+            msg: "{{ upgrade_services.stdout_lines }}"
+
+        - name: Leer la versión de Incus instalada y la candidata del repositorio actual
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "installed=$(dpkg-query -W -f='${Version}' incus 2>/dev/null)"
+            echo "candidate=$(apt-cache policy incus 2>/dev/null | awk '/Candidate:/ {print $2}')"
+          args:
+            executable: /bin/bash
+          register: upgrade_incus_now
+          changed_when: false
+          check_mode: false
+
+        - name: Incus ya debe estar alineado (instalada = candidata)
+          ansible.builtin.assert:
+            that:
+              - >-
+                (upgrade_incus_now.stdout_lines[0] | regex_replace('^installed=[0-9]+:', '') | regex_replace('-.*$', ''))
+                == (upgrade_incus_now.stdout_lines[1] | regex_replace('^candidate=[0-9]+:', '') | regex_replace('-.*$', ''))
+            fail_msg: >-
+              Incus de deborah no es la última versión del repositorio ({{ upgrade_incus_now.stdout_lines | join(' / ') }}).
+              Actualiza Incus en los tres nodos primero: el clúster exige la misma versión en todos los miembros.
+            quiet: true
+          when: not (upgrade_skip_incus_check | bool)
+
+        - name: Preparar una simulación contra trixie (sin tocar los repositorios reales)
+          ansible.builtin.file:
+            path: "{{ upgrade_sim_dir }}/lists/partial"
+            state: directory
+            mode: "0755"
+          check_mode: false
+
+        - name: Escribir las fuentes de la simulación
+          ansible.builtin.copy:
+            dest: "{{ upgrade_sim_dir }}/sources.list"
+            mode: "0644"
+            content: |
+              deb {{ upgrade_debian_mirror }} trixie main contrib non-free non-free-firmware
+              deb {{ upgrade_debian_mirror }} trixie-updates main contrib non-free non-free-firmware
+              deb {{ upgrade_security_mirror }} trixie-security main contrib non-free non-free-firmware
+          check_mode: false
+
+        - name: Bajar los índices de trixie a un directorio aparte
+          ansible.builtin.command:
+            argv:
+              - apt-get
+              - -o
+              - "Dir::Etc::sourcelist={{ upgrade_sim_dir }}/sources.list"
+              - -o
+              - Dir::Etc::sourceparts=/dev/null
+              - -o
+              - "Dir::State::lists={{ upgrade_sim_dir }}/lists"
+              - -o
+              - "Dir::Cache={{ upgrade_sim_dir }}/cache"
+              - update
+          register: upgrade_sim_update
+          changed_when: false
+          check_mode: false
+
+        - name: Simular la actualización completa
+          ansible.builtin.command:
+            argv:
+              - apt-get
+              - -s
+              - -o
+              - "Dir::Etc::sourcelist={{ upgrade_sim_dir }}/sources.list"
+              - -o
+              - Dir::Etc::sourceparts=/dev/null
+              - -o
+              - "Dir::State::lists={{ upgrade_sim_dir }}/lists"
+              - -o
+              - "Dir::Cache={{ upgrade_sim_dir }}/cache"
+              - full-upgrade
+          register: upgrade_sim
+          changed_when: false
+          check_mode: false
+          failed_when: upgrade_sim.rc != 0
+
+        - name: Resumir la simulación
+          ansible.builtin.set_fact:
+            upgrade_sim_removed: "{{ upgrade_sim.stdout_lines | select('match', '^Remv ') | list }}"
+            upgrade_sim_removed_protected: "{{ upgrade_sim.stdout_lines | select('match', '^Remv (' ~ upgrade_protected_names ~ ')') | list }}"
+            upgrade_sim_installs: "{{ upgrade_sim.stdout_lines | select('match', '^Inst ') | list | length }}"
+
+        - name: Mostrar el resultado de la simulación
+          ansible.builtin.debug:
+            msg:
+              - "Paquetes a instalar o actualizar: {{ upgrade_sim_installs }}"
+              - "Paquetes a eliminar ({{ upgrade_sim_removed | length }}): {{ upgrade_sim_removed | map('regex_replace', '^Remv ([^ ]+).*', '\\1') | list }}"
+
+        - name: Fallar si la actualización eliminaría paquetes protegidos
+          ansible.builtin.assert:
+            that: upgrade_sim_removed_protected | length == 0
+            fail_msg: "La actualización eliminaría paquetes protegidos (kernel, arranque o servicios del HomeLab): {{ upgrade_sim_removed_protected }}"
+            quiet: true
+
+        - name: Borrar los índices de la simulación (cientos de MB en /var/tmp)
+          ansible.builtin.file:
+            path: "{{ upgrade_sim_dir }}"
+            state: absent
+          check_mode: false
+
+    # ------------------------------------------------------------------ ACTUALIZACIÓN (requiere upgrade_confirm)
+    - name: Respaldo, cambio de repositorios, actualización y compuerta de arranque
+      when: upgrade_confirm | bool
+      tags: [backup, upgrade, gate]
+      block:
+        - name: Fecha de este intento
+          ansible.builtin.set_fact:
+            upgrade_stamp: "{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
+            upgrade_started_epoch: "{{ ansible_facts['date_time']['epoch'] }}"
+          tags: [always]
+
+        - name: Pausar las actualizaciones automáticas durante el proceso
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop: [apt-daily.timer, apt-daily-upgrade.timer, unattended-upgrades.service]
+          failed_when: false
+          tags: [upgrade]
+
+        - name: Dejar Debian 12 totalmente actualizado antes de cambiar de versión
+          ansible.builtin.shell: |
+            set -o pipefail
+            apt-get update
+            apt-get {{ upgrade_apt_opts }} dist-upgrade 2>&1 | tail -3
+            apt-get {{ upgrade_apt_opts }} install --only-upgrade debian-archive-keyring 2>&1 | tail -1
+          args:
+            executable: /bin/bash
+          environment: "{{ upgrade_apt_env }}"
+          async: 3600
+          poll: 15
+          changed_when: true
+          tags: [upgrade]
+
+        # --- respaldo ---------------------------------------------------------------
+        - name: Crear el directorio de respaldo
+          ansible.builtin.file:
+            path: "{{ upgrade_backup_dir }}/{{ upgrade_stamp }}"
+            state: directory
+            mode: "0700"
+          tags: [backup]
+
+        - name: Guardar la lista de paquetes y el estado de Incus y K3s
+          ansible.builtin.shell: |
+            set -eu
+            d={{ upgrade_backup_dir }}/{{ upgrade_stamp }}
+            dpkg --get-selections > $d/dpkg-selections.txt
+            apt-mark showmanual > $d/apt-manual.txt
+            apt-mark showhold > $d/apt-hold.txt
+            dpkg -l > $d/dpkg-list.txt
+            # informativo: no debe detener el respaldo si Incus o K3s no responden
+            { uname -r; ip -br addr; incus cluster list 2>&1; incus list 2>&1; k3s kubectl get nodes -o wide 2>&1; } > $d/estado-previo.txt || true
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [backup]
+
+        - name: Respaldar /etc, /boot, dpkg/apt y BIND (cada archivo se verifica)
+          ansible.builtin.shell: |
+            set -u
+            d={{ upgrade_backup_dir }}/{{ upgrade_stamp }}
+            # rc 1 de tar = "un archivo cambió mientras se leía": aviso benigno. rc >= 2 = error real.
+            backup() {
+              out=$1; shift
+              paths=""
+              for p in "$@"; do [ -e "$p" ] && paths="$paths $p"; done
+              [ -n "$paths" ] || { echo "sin rutas para $out: se omite"; return 0; }
+              tar -czf "$d/$out" $paths
+              rc=$?
+              [ $rc -le 1 ] || { echo "tar falló ($rc) en $out"; exit $rc; }
+              tar -tzf "$d/$out" > /dev/null || { echo "$out quedó corrupto"; exit 1; }
+            }
+            backup etc.tgz /etc
+            backup boot.tgz /boot
+            backup dpkg-apt.tgz /var/lib/dpkg /var/lib/apt/extended_states
+            backup bind.tgz /var/lib/bind /var/lib/named
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [backup]
+
+        - name: Detener K3s (el control plane queda sin API hasta el reinicio)
+          ansible.builtin.systemd:
+            name: k3s
+            state: stopped
+          failed_when: false
+          tags: [backup]
+
+        - name: Respaldar el estado de K3s (SQLite, certificados y token)
+          ansible.builtin.shell: |
+            set -u
+            d={{ upgrade_backup_dir }}/{{ upgrade_stamp }}
+            paths=""
+            for p in /etc/rancher/k3s /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/tls \
+                     /var/lib/rancher/k3s/server/token /var/lib/rancher/k3s/server/cred; do
+              [ -e "$p" ] && paths="$paths $p"
+            done
+            [ -n "$paths" ] || { echo "no hay estado de K3s que respaldar"; exit 1; }
+            tar -czf "$d/k3s.tgz" $paths
+            rc=$?
+            [ $rc -le 1 ] || { echo "tar falló ($rc) en k3s.tgz"; exit $rc; }
+            tar -tzf "$d/k3s.tgz" > /dev/null || { echo "k3s.tgz quedó corrupto"; exit 1; }
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [backup]
+
+        - name: Listar los archivos del respaldo
+          ansible.builtin.find:
+            paths: "{{ upgrade_backup_dir }}/{{ upgrade_stamp }}"
+            file_type: file
+          register: upgrade_backup_files
+          tags: [backup]
+
+        - name: Traer el respaldo a la estación (ansible/backups/, ignorada por git)
+          ansible.builtin.fetch:
+            src: "{{ item.path }}"
+            dest: "{{ upgrade_fetch_dir }}/deborah-{{ upgrade_stamp }}/"
+            flat: true
+          loop: "{{ upgrade_backup_files.files }}"
+          loop_control:
+            label: "{{ item.path | basename }}"
+          tags: [backup]
+
+        # --- cambio de repositorios -------------------------------------------------
+        - name: Guardar las fuentes de apt actuales
+          ansible.builtin.shell: |
+            d={{ upgrade_backup_dir }}/{{ upgrade_stamp }}/apt-sources
+            mkdir -p $d && cp -a /etc/apt/sources.list /etc/apt/sources.list.d $d/
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [upgrade]
+
+        - name: Escribir las fuentes de Debian 13 (trixie)
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/debian.sources
+            mode: "0644"
+            content: |
+              Types: deb
+              URIs: {{ upgrade_debian_mirror }}
+              Suites: trixie trixie-updates
+              Components: main contrib non-free non-free-firmware
+
+              Types: deb
+              URIs: {{ upgrade_security_mirror }}
+              Suites: trixie-security
+              Components: main contrib non-free non-free-firmware
+          tags: [upgrade]
+
+        - name: Desactivar /etc/apt/sources.list (apunta a bookworm)
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list
+            mode: "0644"
+            content: |
+              # Reemplazado por /etc/apt/sources.list.d/debian.sources (actualización a trixie).
+              # El original está en {{ upgrade_backup_dir }}/{{ upgrade_stamp }}/apt-sources/.
+          tags: [upgrade]
+
+        - name: Pasar el repositorio de Zabbly (Incus) a trixie
+          ansible.builtin.replace:
+            path: /etc/apt/sources.list.d/zabbly-incus-stable.sources
+            regexp: '^Suites:\s+bookworm\s*$'
+            replace: 'Suites: trixie'
+          failed_when: false
+          tags: [upgrade]
+
+        - name: Actualizar los índices (debe terminar sin errores)
+          ansible.builtin.apt:
+            update_cache: true
+          environment: "{{ upgrade_apt_env }}"
+          tags: [upgrade]
+
+        - name: Leer la versión de Incus candidata ahora (repositorio de trixie)
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "installed=$(dpkg-query -W -f='${Version}' incus 2>/dev/null)"
+            echo "candidate=$(apt-cache policy incus 2>/dev/null | awk '/Candidate:/ {print $2}')"
+          args:
+            executable: /bin/bash
+          register: upgrade_incus_trixie
+          changed_when: false
+          tags: [upgrade]
+
+        - name: Incus no debe cambiar de versión al pasar a trixie (el clúster exige la misma en todos)
+          ansible.builtin.assert:
+            that:
+              - >-
+                (upgrade_incus_trixie.stdout_lines[0] | regex_replace('^installed=[0-9]+:', '') | regex_replace('-.*$', ''))
+                == (upgrade_incus_trixie.stdout_lines[1] | regex_replace('^candidate=[0-9]+:', '') | regex_replace('-.*$', ''))
+            fail_msg: >-
+              El repositorio de trixie traería otra versión de Incus ({{ upgrade_incus_trixie.stdout_lines | join(' / ') }}).
+              Se detiene aquí: los repositorios ya apuntan a trixie pero no se actualizó nada. Para volver atrás,
+              restaura las fuentes desde {{ upgrade_backup_dir }}/{{ upgrade_stamp }}/apt-sources/ y arranca K3s (systemctl start k3s).
+            quiet: true
+          when: not (upgrade_skip_incus_check | bool)
+          tags: [upgrade]
+
+        # --- actualización ----------------------------------------------------------
+        - name: Actualización mínima (sin paquetes nuevos)
+          ansible.builtin.shell: |
+            set -o pipefail
+            apt-get {{ upgrade_apt_opts }} upgrade 2>&1 | tee /var/log/pre-trixie-upgrade-1.log | tail -5
+          args:
+            executable: /bin/bash
+          environment: "{{ upgrade_apt_env }}"
+          async: 7200
+          poll: 30
+          changed_when: true
+          tags: [upgrade]
+
+        - name: Actualización completa (full-upgrade)
+          ansible.builtin.shell: |
+            set -o pipefail
+            apt-get {{ upgrade_apt_opts }} full-upgrade 2>&1 | tee /var/log/pre-trixie-upgrade-2.log | tail -5
+          args:
+            executable: /bin/bash
+          environment: "{{ upgrade_apt_env }}"
+          async: 7200
+          poll: 30
+          changed_when: true
+          tags: [upgrade]
+
+        # --- compuerta: se valida el arranque ANTES de reiniciar ---------------------
+        - name: Regenerar el initrd del kernel en uso (el hook 99-uboot lo convierte a uInitrd)
+          ansible.builtin.command: "update-initramfs -u -k {{ ansible_facts['kernel'] }}"
+          changed_when: true
+          tags: [gate]
+
+        - name: Validar el arranque antes de reiniciar
+          ansible.builtin.shell: |
+            set -o pipefail
+            fail=0
+            k={{ ansible_facts['kernel'] }}
+            gzip -t /boot/initrd.img-$k 2>/dev/null || { echo "initrd.img-$k no es un gzip válido"; fail=1; }
+            mkimage -l /boot/uInitrd 2>/dev/null | grep -q 'gzip compressed' || { echo "uInitrd inválido o no gzip"; fail=1; }
+            [ "$(stat -c %Y /boot/uInitrd)" -ge {{ upgrade_started_epoch }} ] || { echo "uInitrd no se regeneró en esta actualización"; fail=1; }
+            for f in /boot/Image /boot/boot.scr /boot/orangepiEnv.txt /boot/dtb/rockchip/rk3588-orangepi-5-plus.dtb /lib/modules/$k; do
+              [ -e "$f" ] || { echo "FALTA $f"; fail=1; }
+            done
+            root_uuid=$(findmnt -no UUID /)
+            grep -q "^rootdev=UUID=${root_uuid}$" /boot/orangepiEnv.txt || { echo "rootdev no coincide con el UUID de /"; fail=1; }
+            sshd -t 2>/dev/null || { echo "sshd -t falla"; fail=1; }
+            if command -v netplan >/dev/null 2>&1; then netplan generate 2>/dev/null || { echo "netplan generate falla"; fail=1; }; fi
+            ip -br addr show br0 | grep -q '192.168.20.5' || { echo "br0 no tiene 192.168.20.5"; fail=1; }
+            systemctl is-enabled k3s named ssh >/dev/null 2>&1 || { echo "k3s, named o ssh no están habilitados"; fail=1; }
+            [ "$fail" = 0 ] && echo "compuerta OK"
+            exit $fail
+          args:
+            executable: /bin/bash
+          register: upgrade_gate
+          changed_when: false
+          failed_when: upgrade_gate.rc != 0
+          tags: [gate]
+
+      rescue:
+        - name: Volver a arrancar K3s y reactivar los temporizadores de apt tras un fallo
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: started
+          loop: [k3s, apt-daily.timer, apt-daily-upgrade.timer]
+          failed_when: false
+
+        - name: Detener el playbook (no se reinicia)
+          ansible.builtin.fail:
+            msg: >-
+              La actualización se detuvo ANTES del reinicio. El equipo sigue encendido; K3s se volvió a arrancar.
+              Revisa el error de arriba y los logs /var/log/pre-trixie-upgrade-*.log. Respaldo en
+              {{ upgrade_backup_dir }}/{{ upgrade_stamp | default('(sin fecha)') }} y en ansible/backups/.
+
+    # ------------------------------------------------------------------ REINICIO
+    - name: Reiniciar deborah
+      ansible.builtin.reboot:
+        reboot_timeout: 1200
+        post_reboot_delay: 45
+        msg: "Reinicio por actualización a Debian 13"
+      when: (upgrade_confirm | bool) and (upgrade_reboot | bool)
+      tags: [reboot]
+
+    # ------------------------------------------------------------------ VERIFICACIÓN (solo lectura)
+    - name: Verificar el resultado
+      when: (upgrade_confirm | bool) or ('verify' in ansible_run_tags)
+      tags: [verify]
+      block:
+        - name: Leer el sistema operativo y el kernel
+          ansible.builtin.setup:
+            gather_subset: [min]
+
+        - name: Debe ser Debian 13 con el mismo kernel del fabricante
+          ansible.builtin.assert:
+            that:
+              - ansible_facts['distribution_release'] == 'trixie'
+              - "'rockchip' in ansible_facts['kernel']"
+            fail_msg: "Esperado trixie con kernel rockchip; hay {{ ansible_facts['distribution_release'] }} / {{ ansible_facts['kernel'] }}."
+            success_msg: >-
+              Debian {{ ansible_facts['distribution_version'] }} ({{ ansible_facts['distribution_release'] }}),
+              kernel {{ ansible_facts['kernel'] }}
+
+        - name: Esperar a que K3s esté activo y el nodo Ready  # noqa: command-instead-of-module
+          ansible.builtin.shell: |
+            set -o pipefail
+            systemctl is-active k3s >/dev/null && k3s kubectl get nodes --no-headers 2>/dev/null | awk '$1 == "deborah" {print $2}'
+          args:
+            executable: /bin/bash
+          register: upgrade_k3s_ready
+          until: upgrade_k3s_ready.stdout == 'Ready'
+          retries: 30
+          delay: 10
+          changed_when: false
+          check_mode: false
+
+        - name: Comprobar servicios, red, DNS e Incus
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "units con fallo: $(systemctl --failed --no-legend | wc -l)"
+            systemctl --failed --no-legend | awk '{print "  " $2}'
+            for s in k3s named incus ssh; do printf '%s=%s ' "$s" "$(systemctl is-active $s)"; done; echo
+            echo "br0: $(ip -br addr show br0 | awk '{print $3}')"
+            echo "dns: $(dig @127.0.0.1 deborah.mco.local +short +time=3 +tries=1 2>&1 | head -1)"
+            incus cluster list -f csv -c ns 2>&1
+          args:
+            executable: /bin/bash
+          register: upgrade_verify
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: Mostrar el resultado de la verificación
+          ansible.builtin.debug:
+            msg: "{{ upgrade_verify.stdout_lines }}"
+
+    # ------------------------------------------------------------------ LIMPIEZA
+    - name: Limpieza y reactivación de las actualizaciones automáticas
+      when: upgrade_confirm | bool
+      tags: [cleanup]
+      block:
+        - name: Reactivar los temporizadores de apt
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: started
+          loop: [apt-daily.timer, apt-daily-upgrade.timer]
+          failed_when: false
+
+        - name: Listar paquetes obsoletos (revisar a mano - incluye los del fabricante, NO los purgues a ciegas)
+          ansible.builtin.shell: |
+            set -o pipefail
+            { apt list '?obsolete' 2>/dev/null | grep -v '^Listing' | cut -d/ -f1; } || true
+          args:
+            executable: /bin/bash
+          register: upgrade_obsolete
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: Mostrar los paquetes obsoletos
+          ansible.builtin.debug:
+            msg: "{{ upgrade_obsolete.stdout_lines }}"
+
+        - name: Quitar paquetes que ya no hacen falta (opcional, desactivado por defecto)
+          ansible.builtin.apt:
+            autoremove: true
+          when: upgrade_autoremove | bool
+
+        - name: Borrar la simulación y el caché de apt
+          ansible.builtin.shell: rm -rf {{ upgrade_sim_dir }} && apt-get clean
+          args:
+            executable: /bin/bash
+          changed_when: true

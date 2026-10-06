@@ -45,6 +45,13 @@ Desplegado vía Argo CD Application `openebs` (Helm).
 **Usar siempre el motor v1 (default), nunca v2/SPDK**: v2 tiene un bug
 documentado de I/O bloqueado en ARM64 con NVMe (disco SSD por PCIe) + 2 núcleos.
 
+Su UI no tiene pantalla de login y no está publicada por el Gateway: se abre con
+`kubectl -n longhorn-system port-forward svc/longhorn-frontend 8080:80` y `http://127.0.0.1:8080`. El panel resume volúmenes,
+espacio y nodos:
+
+??? note "Ver captura: panel de Longhorn"
+    ![Panel de Longhorn v1.13.0 con 1 volumen, 471 Gi de almacenamiento programable y 3 nodos](../assets/screenshots/longhorn-dashboard.jpg){ loading=lazy }
+
 ```bash
 kubectl label node invincible node.longhorn.io/create-default-disk=true
 kubectl label node deborah node.longhorn.io/create-default-disk=true
@@ -101,9 +108,10 @@ Todas tienen `reclaimPolicy: Delete`: **al borrar el PVC se borra el volumen y s
     `openebs-hostpath` y `local-path` llevan la anotación `is-default-class`. Con dos
     defaults, un PVC sin `storageClassName` queda ambiguo: Kubernetes usa la creada más recientemente y el resultado depende del
     orden en que se instaló cada una.
-    Lo recomendable es dejar solo una: quitar el addon `local-storage` de K3s
-    (`k3s_install.core.disable_components` en Ansible, junto a `traefik` y `servicelb`) y,
-    mientras tanto, pedir siempre la clase explícita en los PVC.
+    Lo recomendable es dejar solo una. En Ansible, `local-storage` ya está en
+    `k3s_install.core.disable_components` (junto a `traefik` y `servicelb`), pero solo afecta a las
+    instalaciones nuevas: este clúster conserva `local-path` hasta que se reinstale K3s. Mientras tanto,
+    pide siempre la clase explícita en los PVC.
 
 ### `openebs-hostpath` — local, rápida, atada al nodo
 
@@ -197,6 +205,25 @@ spec:
     requests:
       storage: 10Gi
 ```
+
+## Actualizar y reinstalar Longhorn
+
+Longhorn solo soporta subir **de a una versión menor** (1.6 → 1.7 → … → 1.13). Si el chart salta versiones, el Job
+`longhorn-pre-upgrade` falla a propósito y, si lo desactivas, los `longhorn-manager` nuevos se caen con
+`upgrading from vX to vY for minor version is not supported`. **En una actualización no desactives ese Job.** En una
+instalación limpia con Argo CD sí hay que desactivarlo (`preUpgradeChecker.jobEnabled: false`): corre antes que su
+ServiceAccount, no puede crear el pod y el sync queda esperándolo para siempre.
+
+Si lo que guarda Longhorn se puede perder (en el HomeLab, el caché de ARC), es más rápido **reinstalarlo desde cero** en
+la versión nueva que subir por cada versión intermedia. Usa
+[`playbook-reset-longhorn.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-reset-longhorn.yml),
+que es **destructivo** (borra los PVC, los volúmenes, las CRD, el namespace y `/var/lib/longhorn` de cada nodo) y seguro
+por defecto: sin `-e longhorn_reset_confirm=true` solo muestra lo que se perdería.
+
+1. En `gitops/bootstrap/root-appset.yaml`, comenta `longhorn` y `arc-runners` y haz push. Así Argo CD no recrea lo que
+   se borra (las Application desaparecen, sus recursos quedan en el clúster).
+2. `ansible-playbook -i inventory.ini playbook-reset-longhorn.yml` (preflight) y luego con `-e longhorn_reset_confirm=true`.
+3. Descomenta `longhorn` y `arc-runners`, haz push: Argo CD instala la versión de `targetRevision` desde cero.
 
 ## Por qué no Mayastor
 

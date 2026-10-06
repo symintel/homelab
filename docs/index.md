@@ -81,8 +81,8 @@ audio. Elige tu nivel, pulsa el botón y pega la pregunta en el chat.
 
 | Nodo | Modelo | CPU | RAM (medida) | IP (`br0`) | Rol |
 |---|---|---|---|---|---|
-| `invincible` | Lenovo M920q | i3-6100T x86_64 | 7.6 GB | 192.168.20.6 | Incus leader · K3s worker |
-| `oliver` | Lenovo M700 | i7-8700T x86_64 | 15.5 GB | 192.168.20.7 | Incus quorum · K3s worker |
+| `invincible` | Lenovo M920q | i7-8700T x86_64 | 15.5 GB | 192.168.20.6 | Incus leader · K3s worker |
+| `oliver` | Lenovo M700 | i3-6100T x86_64 | 7.7 GB | 192.168.20.7 | Incus quorum · K3s worker |
 | `deborah` | Orange Pi 5 Plus | RK3588 ARM64 | 31 GB | 192.168.20.5 | K3s control-plane · Incus arm64 |
 
 Detalle medido y presupuesto RAM: [Inventario de hardware](hardware/inventory.md).

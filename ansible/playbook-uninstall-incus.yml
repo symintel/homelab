@@ -1,0 +1,196 @@
+---
+# Desinstala el clúster Incus (los 3 nodos) para poder rehacerlo desde cero.
+#
+# DESTRUCTIVO: borra TODAS las instancias (contenedores y VM), imágenes,
+# volúmenes, redes y el pool de almacenamiento de Incus, y purga los paquetes.
+# NO toca br0 / netplan, ni K3s (corre en el host, fuera de Incus), ni BIND.
+#
+# Seguro por defecto: sin -e incus_uninstall_confirm=true solo hace el
+# preflight (lista lo que se perdería) y no cambia nada.
+#
+# Ejecutar:
+#   ansible-playbook -i inventory.ini playbook-uninstall-incus.yml                              # solo preflight
+#   ansible-playbook -i inventory.ini playbook-uninstall-incus.yml -e incus_uninstall_confirm=true
+#
+# Para rehacer el clúster después:
+#   ansible-playbook -i inventory.ini playbook-bootstrap.yml
+#   ansible-playbook -i inventory.ini playbook-incus-cluster.yml
+#
+# Variables (siempre -e nombre=valor, sin puntos):
+#   incus_uninstall_confirm      false  true = ejecuta de verdad
+#   incus_uninstall_purge_repo   false  true = quita también el repo Zabbly y su llave
+#   incus_uninstall_purge_lxcfs  false  true = purga también lxcfs
+#   incus_uninstall_remove_ovn   false  true = purga ovn/openvswitch (si los instalaste)
+
+- name: Desinstalar el clúster Incus
+  hosts: incus_cluster
+  become: true
+  gather_facts: false
+  # Uno por vez: si algo falla, los demás nodos quedan intactos.
+  serial: 1
+
+  vars:
+    incus_uninstall_confirm: false
+    incus_uninstall_purge_repo: false
+    incus_uninstall_purge_lxcfs: false
+    incus_uninstall_remove_ovn: false
+    incus_uninstall_packages:
+      - incus
+      - incus-base
+      - incus-client
+      - incus-extra
+      - incus-ui-canonical
+    incus_uninstall_data_dirs:
+      - /var/lib/incus
+      - /var/log/incus
+      - /var/cache/incus
+      - /etc/incus
+
+  tasks:
+    # ----------------------------------------------------
+    # 1. PREFLIGHT (siempre; solo lectura)
+    # ----------------------------------------------------
+    - name: Preflight - comprobar si Incus está instalado
+      ansible.builtin.stat:
+        path: /usr/bin/incus
+      register: incus_bin
+      tags: [preflight, always]
+
+    - name: Preflight - listar instancias y miembros que se perderían
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "== miembros =="; incus cluster list --format csv 2>&1 | cut -d, -f1,2,7 || true
+        echo "== instancias =="; incus list --all-projects --format csv -c ns4 2>&1 || true
+        echo "== pools =="; incus storage list --format csv 2>&1 | cut -d, -f1,2 || true
+        echo "== redes gestionadas =="; incus network list --format csv 2>&1 | awk -F, '$3=="YES"{print $1}' || true
+      args:
+        executable: /bin/bash
+      register: incus_inventory
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: incus_bin.stat.exists
+      tags: [preflight, always]
+
+    - name: Preflight - mostrar lo que se borraría en este nodo
+      ansible.builtin.debug:
+        msg: "{{ incus_inventory.stdout_lines | default(['Incus no está instalado en ' ~ inventory_hostname]) }}"
+      tags: [preflight, always]
+
+    - name: Preflight - tamaño de los datos de Incus
+      ansible.builtin.shell: "du -sh {{ incus_uninstall_data_dirs | join(' ') }} 2>/dev/null || true"
+      args:
+        executable: /bin/bash
+      register: incus_sizes
+      changed_when: false
+      check_mode: false
+      tags: [preflight, always]
+
+    - name: Preflight - mostrar tamaños
+      ansible.builtin.debug:
+        var: incus_sizes.stdout_lines
+      tags: [preflight, always]
+
+    - name: Aviso - sin confirmación no se cambia nada
+      ansible.builtin.debug:
+        msg: >-
+          Modo seguro: no se modificó nada en {{ inventory_hostname }}.
+          Para desinstalar de verdad: -e incus_uninstall_confirm=true
+      when: not (incus_uninstall_confirm | bool)
+      tags: [preflight, always]
+
+    # ----------------------------------------------------
+    # 2. DESINSTALACIÓN (solo con confirmación)
+    # ----------------------------------------------------
+    - name: Desinstalar Incus en este nodo
+      when: incus_uninstall_confirm | bool
+      tags: [uninstall]
+      block:
+        - name: Detener todas las instancias (ignora los errores si el daemon no responde)
+          ansible.builtin.command: incus stop --all --force
+          changed_when: false
+          failed_when: false
+          when: incus_bin.stat.exists
+
+        - name: Detener los servicios de Incus
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop:
+            - incus.service
+            - incus.socket
+            - incus-user.service
+            - incus-user.socket
+            - incus-startup.service
+          failed_when: false
+
+        - name: Desmontar lo que quede bajo /var/lib/incus
+          ansible.builtin.shell: |
+            set -o pipefail
+            findmnt -rn -o TARGET | grep '^/var/lib/incus' | sort -r | xargs -r -n1 umount -l || true
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+        - name: Purgar los paquetes de Incus
+          ansible.builtin.apt:
+            name: "{{ incus_uninstall_packages }}"
+            state: absent
+            purge: true
+          register: incus_purge
+
+        - name: Purgar lxcfs (opcional)
+          ansible.builtin.apt:
+            name: lxcfs
+            state: absent
+            purge: true
+          when: incus_uninstall_purge_lxcfs | bool
+
+        - name: Purgar OVN y Open vSwitch (opcional)
+          ansible.builtin.apt:
+            name:
+              - ovn-central
+              - ovn-host
+              - ovn-common
+              - openvswitch-switch
+              - openvswitch-common
+            state: absent
+            purge: true
+          when: incus_uninstall_remove_ovn | bool
+
+        - name: Borrar los datos de Incus
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ incus_uninstall_data_dirs }}"
+
+        - name: Borrar el instalador temporal
+          ansible.builtin.file:
+            path: /tmp/incus-install.sh
+            state: absent
+
+        - name: Quitar el repositorio Zabbly (opcional)
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/apt/sources.list.d/zabbly-incus-stable.sources
+            - /etc/apt/keyrings/zabbly.asc
+          when: incus_uninstall_purge_repo | bool
+
+        - name: Verificar que Incus ya no está
+          ansible.builtin.stat:
+            path: /usr/bin/incus
+          register: incus_after
+          failed_when: incus_after.stat.exists
+
+        - name: Verificar que br0 sigue intacto
+          ansible.builtin.command: "ip -br addr show br0"
+          register: br0_after
+          changed_when: false
+          failed_when: static_ip not in br0_after.stdout
+
+        - name: Resultado en este nodo
+          ansible.builtin.debug:
+            msg: "Incus desinstalado en {{ inventory_hostname }}. br0: {{ br0_after.stdout }}"

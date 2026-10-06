@@ -32,6 +32,8 @@ site/
 # Reportes de discovery de hardware (datos en vivo, se regeneran con
 # ansible/playbook-discovery.yml -- no versionar)
 ansible/reports/
+# Respaldos traídos de los nodos por playbook-upgrade-debian13.yml (configuración y secretos): nunca versionar
+ansible/backups/
 
 # Password de Ansible Vault -- nunca commitear
 .vault_pass_homelab
