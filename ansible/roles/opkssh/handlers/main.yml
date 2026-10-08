@@ -1,0 +1,9 @@
+---
+- name: Validar sshd (opkssh)
+  ansible.builtin.command: sshd -t
+  changed_when: false
+
+- name: Recargar sshd (opkssh)
+  ansible.builtin.systemd:
+    name: ssh
+    state: reloaded

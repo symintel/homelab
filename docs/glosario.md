@@ -46,6 +46,7 @@ vez que aparecen en cada página llevan el significado entre paréntesis.
 | **K3s** | [distribución ligera de Kubernetes](https://k3s.io/) | Kubernetes empaquetado en un solo binario, pensado para edge y HomeLabs. |
 | **K8s** | [Kubernetes](https://kubernetes.io/) | Plataforma de orquestación de contenedores. |
 | **KIC** | [Kong Ingress Controller](https://developer.konghq.com/kubernetes-ingress-controller/) | Controlador de Kong para Kubernetes; aquí implementa Gateway API. |
+| **KVM** | [Kernel-based Virtual Machine](https://linux-kvm.org/) | Virtualización por hardware integrada en el kernel de Linux; la usan las VMs de Incus. |
 | **L2** | capa 2 del modelo OSI | Capa de enlace del modelo OSI: tráfico dentro de la misma red local (MAC, ARP). |
 | **L3** | capa 3 del modelo OSI | Capa de red del modelo OSI: IPs y ruteo. |
 | **L7** | capa 7 del modelo OSI | Capa de aplicación del modelo OSI: HTTP y similares. |
@@ -60,8 +61,10 @@ vez que aparecen en cada página llevan el significado entre paréntesis.
 | **NVMe** | disco SSD por PCIe | Non-Volatile Memory Express: discos SSD de alta velocidad. |
 | **OCI** | [Open Container Initiative](https://opencontainers.org/) | Estándar de imágenes y registros; ARC y NGINX Gateway Fabric publican su chart de Helm en un registro OCI. |
 | **OIDC** | [OpenID Connect](https://openid.net/developers/how-connect-works/) | Protocolo de inicio de sesión sobre OAuth 2.0; Dex lo usa para el login con GitHub. |
+| **OpenPubkey** | [OpenPubkey](https://github.com/openpubkey/openpubkey) | Proyecto que convierte un login OIDC en una llave SSH de corta vida; lo usa [opkssh](https://github.com/openpubkey/opkssh) para entrar a los hosts con la identidad de Dex. |
 | **OS** | sistema operativo | Operating System. |
 | **OVN** | [Open Virtual Network](https://www.ovn.org/) | Red virtual definida por software que Incus puede usar. |
+| **PKCE** | [Proof Key for Code Exchange](https://oauth.net/2/pkce/) | Extensión de OAuth para clientes públicos (sin secreto), como `incus-ui` y `opkssh` en Dex. |
 | **PR** / PRs | pull request | Solicitud de cambios en GitHub. |
 | **PSS** | [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) | Niveles de seguridad de Kubernetes para pods (privileged, baseline, restricted). |
 | **PVC** / PVCs | [PersistentVolumeClaim](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) | Pedido de almacenamiento persistente de un pod en Kubernetes. |

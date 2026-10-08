@@ -6,8 +6,9 @@ Suma un equipo nuevo al HomeLab como miembro del clúster Incus y como
 `--limit`, para no tocar los que ya funcionan.
 
 !!! info "Antes de empezar"
-    - Debian instalado en el equipo nuevo, con el usuario `amaceo` creado
-      durante la instalación, y conectado a la LAN (red local).
+    - Debian instalado en el equipo nuevo, con tu usuario administrador creado
+      durante la instalación (ver [qué usuario recibe `sudo`](../implementacion/fase-0-preparacion.md#dia-0-nodos-recien-instalados-solo-la-primera-vez-por-nodo)),
+      y conectado a la LAN (red local).
     - Una IP fija libre en `192.168.20.0/22` para el nodo.
     - El clúster actual funcionando: Incus y K3s con los 3 nodos sanos.
     - Un nombre para el nodo (los actuales siguen la serie *Invincible*:
@@ -23,7 +24,7 @@ grupo `servidores_debian`, y corre:
 
 ```bash
 ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass --limit <ip-actual>
-ssh-copy-id amaceo@<ip-actual>
+ssh-copy-id <usuario-admin>@<ip-actual>
 ```
 
 Detalle: [Fase 0 — Día 0](../implementacion/fase-0-preparacion.md#dia-0-nodos-recien-instalados-solo-la-primera-vez-por-nodo).
@@ -154,11 +155,14 @@ ansible-playbook -i inventory.ini playbook-wifi-failover.yml --limit nolan
 
 ## Verificar
 
+Los `ssh` entran con el [acceso por SSO](acceso-ssh.md): corre `opkssh login` antes (requiere el paso
+[4.12](../implementacion/fase-4-gitops.md#412-ssh-a-los-hosts-con-dex-opcional)).
+
 ```bash
 kubectl get nodes -o wide            # nolan en Ready, misma VERSION que el resto
 kubectl get node nolan --show-labels # etiquetas de k3s_node_labels
-ssh amaceo@192.168.20.5 sudo incus cluster list          # nolan ONLINE
-ssh amaceo@192.168.20.5 sudo incus cluster group show x86-nodes
+ssh devops@deborah.homelab.local sudo incus cluster list          # nolan ONLINE
+ssh devops@deborah.homelab.local sudo incus cluster group show x86-nodes
 dig +short nolan.mco.local @192.168.20.5         # 192.168.20.8
 ```
 

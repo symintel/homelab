@@ -39,6 +39,7 @@ su `README.md` con variables, tags y verificación.
 | [`k3s_fetch_kubeconfig`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_fetch_kubeconfig/README.md) | Kubeconfig local | `playbook-k3s.yml` | `kubeconfig` |
 | [`k3s_os_hardening`](https://github.com/symintel/homelab/blob/main/ansible/roles/k3s_os_hardening/README.md) | unattended-upgrades | `playbook-k3s.yml` | `hardening` |
 | [`host_hardening`](https://github.com/symintel/homelab/blob/main/ansible/roles/host_hardening/README.md) | SSH, cuentas default, sysctl, auditd | `playbook-hardening.yml` | — |
+| [`opkssh`](https://github.com/symintel/homelab/blob/main/ansible/roles/opkssh/README.md) | SSH a los hosts con la identidad de Dex (team `devops`) | `playbook-opkssh.yml` | — |
 | [`wifi_failover`](https://github.com/symintel/homelab/blob/main/ansible/roles/wifi_failover/README.md) | WiFi de respaldo del cable (nodos con WiFi) | `playbook-wifi-failover.yml` | — |
 | [`storage_provision`](https://github.com/symintel/homelab/blob/main/ansible/roles/storage_provision/README.md) | Formatea y monta un disco libre (destructivo) | `playbook-storage-provision.yml` | — |
 
@@ -46,7 +47,7 @@ su `README.md` con variables, tags y verificación.
 
 | Playbook | Fase | Descripción |
 |---|---|---|
-| [`setup_sudo.yml`](https://github.com/symintel/homelab/blob/main/ansible/bootstrap/setup_sudo.yml) | Día 0 | Instala python3 y sudo y deja a `amaceo` con sudo (conecta como root) |
+| [`setup_sudo.yml`](https://github.com/symintel/homelab/blob/main/ansible/bootstrap/setup_sudo.yml) | Día 0 | Instala python3 y sudo y deja a tu usuario administrador con sudo (conecta como root; el usuario se puede indicar con `-e bootstrap_admin_user=<usuario>`) |
 | [`playbook-discovery.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-discovery.yml) | 0 | Inventario hardware → `ansible/reports/` |
 | [`playbook-incus-cluster.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-incus-cluster.yml) | 2 | Bootstrap/join/groups/UI Incus |
 | [`playbook-dex-oauth-secrets.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-dex-oauth-secrets.yml) | 4 | OAuth Dex: 1Password + ArgoCD + Incus/vCluster |

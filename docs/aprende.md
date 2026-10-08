@@ -19,7 +19,7 @@ estudio que **solo responde con esta documentación**. Todo lo que se usa aquí 
 
 ## El cuaderno de estudio (NotebookLM)
 
-[**Abrir el cuaderno del HomeLab**](https://notebook.google.com/notebook/2393c988-484f-4fb3-8cb7-d225ab5a5036){ .md-button }
+[**Abrir el cuaderno del HomeLab**](https://notebooklm.google/){ .md-button data-notebook-link="1" }
 
 Es un cuaderno de [NotebookLM](https://notebooklm.google/) con toda esta documentación como fuente. Responde solo con
 ella y cita de dónde sale cada respuesta, así que es difícil que se invente cosas. Además de conversar, puedes pedirle:

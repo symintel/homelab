@@ -11,8 +11,13 @@ $TTL    300
 ns      IN      A       {{ dns_primary }}
 incus   IN      A       {{ hostvars[incus_cluster_leader].static_ip }}
 
+; Cada servidor con su propio registro
+{% for host in groups['incus_cluster'] %}
+{{ host }}     IN      A       {{ hostvars[host].static_ip }}
+{% endfor %}
+
 ; Servicios publicados por el Gateway de GitOps (HTTPRoute en gitops)
 argocd  IN      A       {{ gateway_ip }}
 vcluster IN     A       {{ gateway_ip }}
-; Cualquier otro host *.homelab.local (futuros HTTPRoute) cae en el Gateway
-*       IN      A       {{ gateway_ip }}
+api     IN      A       {{ gateway_ip }}
+; No hay comodín: cada nombre nuevo (HTTPRoute) necesita su propio registro aquí.

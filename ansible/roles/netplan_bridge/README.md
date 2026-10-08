@@ -32,6 +32,7 @@ Global en [`group_vars/all.yml`](../../group_vars/all.yml):
 |---|---|---|
 | `gateway` | `192.168.20.1` | Gateway por defecto y segundo DNS |
 | `dns_primary` | `192.168.20.5` | Primer DNS |
+| `dns_search_domains` | `homelab.local`, `mco.local` | Dominios del `search` de `resolv.conf` |
 | `lan_prefix_length` | `22` | Prefijo de la LAN |
 
 ## Qué hace
@@ -41,14 +42,19 @@ Global en [`group_vars/all.yml`](../../group_vars/all.yml):
 3. Genera `/etc/netplan/br0.yaml` desde [`templates/br0.yaml.j2`](templates/br0.yaml.j2).
 4. Aplica `netplan apply`, espera SSH en `static_ip` y actualiza `ansible_host`.
 5. DNS (antes de instalar paquetes): elimina `systemd-resolved` si existe y escribe `/etc/resolv.conf`
-   estático con `search {{ dns_domain }}` y los `nameserver` `dns_primary` y
+   estático con `search` de `dns_search_domains` (`homelab.local mco.local`) y los `nameserver` `dns_primary` y
    `gateway`.
+6. Si el nodo tiene NetworkManager, instala `/etc/NetworkManager/conf.d/dns-none.conf` (`dns=none`)
+   y lo reinicia **antes** de escribir `resolv.conf`. Sin esto NetworkManager lo reescribe con el DNS
+   del router y el nodo deja de resolver `*.homelab.local` (pasó en `deborah`, el servidor BIND:
+   opkssh no podía validar los logins).
 
 ## Verificar
 
 ```bash
 ip -br addr show br0
-cat /etc/resolv.conf   # search mco.local, nameserver 192.168.20.5 y 192.168.20.1
+cat /etc/resolv.conf   # search homelab.local mco.local, nameserver 192.168.20.5 y 192.168.20.1
+getent hosts argocd.homelab.local   # debe resolver (192.168.23.200)
 ```
 
 ## Documentación

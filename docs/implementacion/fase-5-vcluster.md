@@ -136,7 +136,7 @@ kubectl get pods -n vcluster-platform
 curl -kI https://vcluster.homelab.local
 ```
 
-1. Abre `https://vcluster.homelab.local`
+1. Abre [`https://vcluster.homelab.local`](https://vcluster.homelab.local)
 2. Login with SSO (GitHub)
 3. New Virtual Cluster → Download kubeconfig
 
@@ -147,7 +147,7 @@ automáticamente el clúster **host** (el K3s donde corre Platform) como
 **connected cluster**. Desde la misma UI obtienes el kubeconfig del management
 cluster, no solo el de vclusters.
 
-1. Login SSO en `https://vcluster.homelab.local`
+1. Login SSO en [`https://vcluster.homelab.local`](https://vcluster.homelab.local)
 2. **Clusters** → selecciona el clúster host (p. ej. el nombre del contexto K3s)
 3. **Connect** / **Download kubeconfig**
 4. `export KUBECONFIG=~/Downloads/kubeconfig.yaml && kubectl get nodes`
@@ -162,9 +162,9 @@ OIDC de GitHub llegan con prefijo `loft-` (ver
 
 | Recurso | URL | Qué obtienes |
 |---|---|---|
-| Management K3s | `https://vcluster.homelab.local` | Kubeconfig del host K3s (connected cluster) |
-| vClusters | `https://vcluster.homelab.local` | Kubeconfig de cada clúster virtual |
-| Incus cluster | `https://incus.homelab.local:8443` | UI de administración Incus (OIDC tras Fase 4) |
+| Management K3s | [`https://vcluster.homelab.local`](https://vcluster.homelab.local) | Kubeconfig del host K3s (connected cluster) |
+| vClusters | [`https://vcluster.homelab.local`](https://vcluster.homelab.local) | Kubeconfig de cada clúster virtual |
+| Incus cluster | [`https://incus.homelab.local:8443`](https://incus.homelab.local:8443) | UI de administración Incus (OIDC tras Fase 4) |
 
 Alternativa CLI (interfaz de línea de comandos) para el management K3s: [`fase-4-gitops.md` 4.1](fase-4-gitops.md#41-acceso-kubectl) (`scp` / Ansible).
 

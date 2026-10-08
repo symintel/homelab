@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# {{ ansible_managed }}
+# Policy plugin de opkssh: permite entrar como "{{ opkssh_login_user }}" a quien tenga el grupo
+# "{{ opkssh_allowed_group }}" en el ID token que emite Dex (team de GitHub).
+# opkssh ya validó la firma del token y que el emisor es uno de /etc/opk/providers.
+# OPKSSH_PLUGIN_GROUPS llega como array JSON, p. ej. ["{{ opkssh_allowed_group }}"].
+if [ "${OPKSSH_PLUGIN_U}" = "{{ opkssh_login_user }}" ] \
+  && [ "${OPKSSH_PLUGIN_ISS}" = "{{ opkssh_issuer }}" ] \
+  && printf '%s' "${OPKSSH_PLUGIN_GROUPS}" | grep -qF '"{{ opkssh_allowed_group }}"'; then
+  echo "allow"
+  exit 0
+fi
+echo "deny"
+exit 1

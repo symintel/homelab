@@ -17,11 +17,42 @@
     state: absent
     purge: true
 
+# Si el nodo tiene NetworkManager (p. ej. los que usan wifi_failover), por defecto
+# reescribe /etc/resolv.conf con el DNS que le da el router y deja al nodo sin ver
+# los nombres de homelab.local. dns=none se lo prohibe. Es el mismo archivo y contenido
+# que escribe wifi_failover, asi que ambos roles coinciden. Va ANTES de escribir
+# resolv.conf para que lo ultimo en escribirlo sea este playbook.
+- name: Detectar NetworkManager
+  ansible.builtin.stat:
+    path: /usr/sbin/NetworkManager
+  register: netplan_bridge_nm
+
+- name: Impedir que NetworkManager reescriba /etc/resolv.conf
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/dns-none.conf
+    content: |
+      [main]
+      dns=none
+    owner: root
+    group: root
+    mode: "0644"
+  register: netplan_bridge_nm_dns
+  when: netplan_bridge_nm.stat.exists
+
+- name: Reiniciar NetworkManager para que aplique dns=none
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: restarted
+  when:
+    - netplan_bridge_nm.stat.exists
+    - netplan_bridge_nm_dns is changed
+    - not ansible_check_mode
+
 - name: Escribir /etc/resolv.conf estatico
   ansible.builtin.copy:
     dest: /etc/resolv.conf
     content: |
-      search {{ dns_domain }}
+      search {{ dns_search_domains | join(' ') }}
       nameserver {{ dns_primary }}
       nameserver {{ gateway }}
     owner: root

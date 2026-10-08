@@ -20,10 +20,10 @@ al terminar la Fase 4 como mínimo; las fases 5 y 6 son opcionales.
 
 | Servicio | URL | Auth | Fase |
 |---|---|---|---|
-| **ArgoCD** | `https://argocd.homelab.local` | SSO GitHub vía Dex | 4 |
+| **ArgoCD** | [`https://argocd.homelab.local`](https://argocd.homelab.local) | SSO GitHub vía Dex | 4 |
 | **Dex** (issuer) | `https://argocd.homelab.local/api/dex` | — | 4 |
-| **vCluster Platform** | `https://vcluster.homelab.local` | SSO Dex → GitHub | 5 |
-| **Incus UI** | `https://incus.homelab.local:8443` | SSO Dex (o cert cliente antes Fase 4) | 2 / 4 |
+| **vCluster Platform** | [`https://vcluster.homelab.local`](https://vcluster.homelab.local) | SSO Dex → GitHub | 5 |
+| **Incus UI** | [`https://incus.homelab.local:8443`](https://incus.homelab.local:8443) | SSO Dex (o cert cliente antes Fase 4) | 2 / 4 |
 | **K3s API** | `https://192.168.20.5:6443` | kubeconfig | 3 |
 
 ### Kubeconfig
@@ -36,7 +36,7 @@ al terminar la Fase 4 como mínimo; las fases 5 y 6 son opcionales.
 
 ## DNS en tu estación de trabajo
 
-Usa `192.168.20.5` (BIND en `deborah`) como DNS: `*.homelab.local` apunta al Gateway
+Usa `192.168.20.5` (BIND en `deborah`) como DNS: `argocd`, `vcluster` y `api` (`.homelab.local`) apuntan al Gateway
 (`192.168.23.200`, IP fija) e `incus.homelab.local` a invincible
 ([Fase 4 — 4.8](fase-4-gitops.md#48-dns-de-homelablocal)). Si no puedes, el respaldo
 es `/etc/hosts`:

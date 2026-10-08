@@ -46,7 +46,7 @@ Desplegado vía Argo CD Application `openebs` (Helm).
 documentado de I/O bloqueado en ARM64 con NVMe (disco SSD por PCIe) + 2 núcleos.
 
 Su UI no tiene pantalla de login y no está publicada por el Gateway: se abre con
-`kubectl -n longhorn-system port-forward svc/longhorn-frontend 8080:80` y `http://127.0.0.1:8080`. El panel resume volúmenes,
+`kubectl -n longhorn-system port-forward svc/longhorn-frontend 8080:80` y [`http://127.0.0.1:8080`](http://127.0.0.1:8080). El panel resume volúmenes,
 espacio y nodos:
 
 ??? note "Ver captura: panel de Longhorn"

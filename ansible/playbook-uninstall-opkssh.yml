@@ -1,0 +1,110 @@
+---
+# Desinstala lo que instala roles/opkssh: el acceso SSH con identidad de Dex.
+#
+# Seguro por defecto: sin -e opkssh_uninstall_confirm=true solo muestra qué
+# quitaría y no cambia nada.
+#
+#   ansible-playbook -i inventory.ini playbook-uninstall-opkssh.yml --limit oliver
+#   ansible-playbook -i inventory.ini playbook-uninstall-opkssh.yml --limit oliver -e opkssh_uninstall_confirm=true
+#
+# No toca authorized_keys ni el hardening (99-hardening.conf): el acceso con
+# llave normal sigue igual. La CA del HomeLab se deja instalada (la usan Incus
+# y otros servicios); para quitarla también: -e opkssh_uninstall_remove_ca=true.
+#
+# Orden: primero se quita el AuthorizedKeysCommand de sshd y se valida/recarga,
+# y solo después se borran binario, cuentas y archivos.
+
+- name: Desinstalar opkssh (SSH con identidad de Dex)
+  hosts: incus_cluster
+  become: true
+  vars:
+    opkssh_uninstall_confirm: false
+    opkssh_uninstall_remove_ca: false
+    opkssh_uninstall_login_user: devops
+    opkssh_uninstall_system_user: opksshuser
+  tasks:
+    - name: Comprobar que Ansible no conecta como la cuenta que se va a borrar
+      ansible.builtin.assert:
+        that:
+          - (ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id'])) != opkssh_uninstall_login_user
+        fail_msg: "Ansible está conectado como '{{ opkssh_uninstall_login_user }}': no se puede borrar esa cuenta."
+        quiet: true
+
+    - name: Ver qué existe hoy
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/ssh/sshd_config.d/50-opkssh.conf
+        - /usr/local/bin/opkssh
+        - /etc/opk
+        - /var/log/opkssh.log
+        - "/etc/sudoers.d/{{ opkssh_uninstall_login_user }}"
+      register: opkssh_present
+
+    - name: Resumen de lo que se quitaría
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: presente =
+          {{ opkssh_present.results | selectattr('stat.exists') | map(attribute='item') | list }};
+          cuentas = {{ opkssh_uninstall_login_user }}, {{ opkssh_uninstall_system_user }};
+          CA = {{ 'se quita' if opkssh_uninstall_remove_ca else 'se conserva' }}.
+          {{ '' if opkssh_uninstall_confirm else 'Modo seguro: añade -e opkssh_uninstall_confirm=true para aplicar.' }}
+
+    - name: Aplicar la desinstalación
+      when: opkssh_uninstall_confirm | bool
+      block:
+        - name: Quitar el drop-in de sshd de opkssh
+          ansible.builtin.file:
+            path: /etc/ssh/sshd_config.d/50-opkssh.conf
+            state: absent
+          register: opkssh_dropin_removed
+
+        - name: Validar sshd
+          ansible.builtin.command: sshd -t
+          changed_when: false
+          when: opkssh_dropin_removed is changed
+
+        - name: Recargar sshd
+          ansible.builtin.systemd:
+            name: ssh
+            state: reloaded
+          when: opkssh_dropin_removed is changed
+
+        - name: Quitar sudoers de la cuenta compartida
+          ansible.builtin.file:
+            path: "/etc/sudoers.d/{{ opkssh_uninstall_login_user }}"
+            state: absent
+
+        - name: Borrar la cuenta compartida (con su home)
+          ansible.builtin.user:
+            name: "{{ opkssh_uninstall_login_user }}"
+            state: absent
+            remove: true
+            force: true
+
+        - name: Borrar binario, configuración y log de opkssh
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /usr/local/bin/opkssh
+            - /etc/opk
+            - /var/log/opkssh.log
+
+        - name: Borrar el usuario de sistema de opkssh
+          ansible.builtin.user:
+            name: "{{ opkssh_uninstall_system_user }}"
+            state: absent
+            remove: true
+
+        - name: Quitar la CA del HomeLab (solo si se pidió)
+          ansible.builtin.file:
+            path: /usr/local/share/ca-certificates/homelab-ca.crt
+            state: absent
+          register: opkssh_ca_removed
+          when: opkssh_uninstall_remove_ca | bool
+
+        - name: Actualizar el almacén de certificados
+          ansible.builtin.command: update-ca-certificates --fresh
+          changed_when: true
+          when: opkssh_uninstall_remove_ca | bool and opkssh_ca_removed is changed

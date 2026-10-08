@@ -33,13 +33,31 @@ Todos los comandos se corren desde `ansible/`:
 cd ansible
 ```
 
+## Qué usuario recibe `sudo`
+
+`setup_sudo.yml` da `sudo` sin contraseña al **usuario administrador que creaste al instalar Debian**. No hay un
+nombre fijo en el repo:
+
+- Por defecto es el **nombre de tu usuario en la estación** desde la que corres Ansible (variable `USER`). Es el
+  mismo con el que Ansible se conecta después, porque `ansible.cfg` no fija `remote_user`.
+- Si en el nodo se llama distinto, indícalo y dile a Ansible cómo conectarse:
+
+  ```bash
+  ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass -e bootstrap_admin_user=<usuario>
+  ```
+
+  y agrega `ansible_user=<usuario>` a las variables de los nodos en `inventory.ini` (o `remote_user = <usuario>` en
+  `ansible.cfg`).
+- El usuario **debe existir ya** en el nodo: el playbook se detiene si no. Solo admite minúsculas, dígitos, `_` y `-`
+  (un punto haría que `sudo` ignore el archivo de `/etc/sudoers.d/`).
+
 ## Orden
 
 | # | Paso | Comando | Depende de |
 |---|---|---|---|
-| — | **Manual, antes de conectar a ninguna red con salida a internet:** flashear el OS. Debian netinst ya te hace crear un usuario normal (`amaceo`) durante la instalación — no hace falta más todavía; la SSH key y el hardening real de cuentas vienen después. | — | — |
-| -1 | **Día 0:** instalar python3+sudo y sumar `amaceo` al grupo sudo (conectando como `root` con password — único acceso posible en un nodo recién instalado) | `ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass` | Root SSH con password todavía habilitado (se cierra en el paso 4) |
-| — | **Manual:** cargar tu SSH key en `amaceo` (`ssh-copy-id`, no hace falta un playbook para esto) | `ssh-copy-id amaceo@<ip-actual-del-nodo>` | Paso -1 (ya existe `amaceo`, ya tiene shell propia) |
+| — | **Manual, antes de conectar a ninguna red con salida a internet:** flashear el OS. Debian netinst ya te hace crear un usuario normal (tu usuario administrador) durante la instalación — no hace falta más todavía; la SSH key y el hardening real de cuentas vienen después. | — | — |
+| -1 | **Día 0:** instalar python3+sudo y sumar tu usuario administrador al grupo sudo (conectando como `root` con password — único acceso posible en un nodo recién instalado) | `ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass` | Root SSH con password todavía habilitado (se cierra en el paso 4) |
+| — | **Manual:** cargar tu SSH key en tu usuario administrador (`ssh-copy-id`, no hace falta un playbook para esto) | `ssh-copy-id <usuario-admin>@<ip-actual-del-nodo>` | Paso -1 (tu usuario ya existe y ya tiene shell propia) |
 | 0 | Discovery (opcional, recomendado 1ª vez) | `ansible-playbook -i inventory.ini playbook-discovery.yml` | Paso -1 |
 | 1 | IP fija en `br0` + gateway/DNS | `ansible-playbook -i inventory.ini playbook-set-static-ip.yml --check --diff` luego sin `--check` | SSH key cargada (paso anterior); Paso 0 opcional |
 | 2 | **BIND** en deborah (instala y configura el DNS `192.168.20.5`, el primer DNS de los 3 nodos) | `ansible-playbook -i inventory.ini playbook-bind-dns.yml` | Paso 1 (deborah con IP fija y salida a internet) |

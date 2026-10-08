@@ -37,17 +37,18 @@ Si tu equipo no usa ese DNS, agrega las entradas a tu archivo `hosts` (ver [Resu
 | **Argo CD** (GitOps) | [`https://argocd.homelab.local`](https://argocd.homelab.local) | GitHub, con SSO (inicio de sesión único) a través de Dex |
 | **Dex** (SSO) | [`https://argocd.homelab.local/api/dex`](https://argocd.homelab.local/api/dex/.well-known/openid-configuration) (emisor OIDC) | Sin interfaz propia: lo usan Argo CD, Incus UI y vCluster |
 | **Incus UI** | [`https://incus.homelab.local:8443/ui/`](https://incus.homelab.local:8443/ui/) | SSO (GitHub, vía Dex) o certificado TLS |
-| **Longhorn UI** | No está publicada: `kubectl port-forward` y `http://127.0.0.1:8080` | Sin login |
+| **SSH a los servidores** | `ssh devops@<servidor>.homelab.local` (`invincible`, `oliver`, `deborah`) | Identidad de GitHub vía Dex, con `opkssh`: [Entrar por SSH a los servidores](acceso-ssh.md) |
+| **Longhorn UI** | No está publicada: `kubectl port-forward` y [`http://127.0.0.1:8080`](http://127.0.0.1:8080) | Sin login |
 | **vCluster Platform** | [`https://vcluster.homelab.local`](https://vcluster.homelab.local) | SSO (vía Dex). Se activa en la Fase 5; sin ella la URL responde 404 |
 | **Documentación** | [`https://homelab.symintelligent.com`](https://homelab.symintelligent.com) | Pública |
 | **API de Kubernetes** | `https://192.168.20.5:6443` (`deborah`) | `kubeconfig` |
-| **Gateway** (Kong) | `192.168.23.200` | — (recibe el tráfico de todos los `*.homelab.local`) |
+| **Gateway** (Kong) | `192.168.23.200` | — (recibe el tráfico de `argocd`, `vcluster` y `api`) |
 | **DNS** (BIND) | `192.168.20.5` | — (zonas `homelab.local` y `mco.local`) |
 
-!!! note "Cualquier `*.homelab.local` llega al Gateway"
-    La zona `homelab.local` apunta `argocd` y `vcluster` a la IP del Gateway (`192.168.23.200`) y `incus` al líder del clúster
-    (`invincible`, `192.168.20.6`). Cualquier otro nombre `*.homelab.local` cae también en el Gateway, para que una `HTTPRoute`
-    nueva funcione sin tocar el DNS. Solo existe la ruta de Argo CD; por eso `vcluster.homelab.local` resuelve pero responde 404.
+!!! note "Cada nombre tiene su registro en BIND"
+    La zona `homelab.local` apunta `argocd`, `vcluster` y `api` a la IP del Gateway (`192.168.23.200`), `incus` al líder del clúster
+    (`invincible`, `192.168.20.6`) y cada servidor (`invincible`, `oliver`, `deborah`) a su propia IP. No hay comodín: un nombre
+    nuevo no resuelve hasta que se añade su registro. Solo existe la ruta de Argo CD; por eso `vcluster.homelab.local` resuelve pero responde 404.
 
 ## Argo CD
 
@@ -94,7 +95,7 @@ Más sobre las clases de almacenamiento: [Storage](../storage/index.md#actualiza
 
 ## vCluster Platform
 
-Su dirección es `https://vcluster.homelab.local`, pero **no se despliega por defecto**: su Application está comentada en
+Su dirección es [`https://vcluster.homelab.local`](https://vcluster.homelab.local), pero **no se despliega por defecto**: su Application está comentada en
 `gitops/bootstrap/root-appset.yaml` y no hay `HTTPRoute`, así que hasta activarla en la [Fase 5](../implementacion/fase-5-vcluster.md) la URL responde 404.
 
 ## Sin interfaz propia

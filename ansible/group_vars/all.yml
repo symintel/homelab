@@ -7,9 +7,13 @@ dns_primary: 192.168.20.5
 
 # IP fija del Gateway de GitOps (primera del pool de MetalLB, 192.168.23.200–.220).
 # La piden los Service de kong/traefik/nginx-gateway en gitops (argocd/apps/*.yaml)
-# y la resuelve *.homelab.local en el DNS (zona homelab.local de bind_dns).
+# y la resuelven argocd, vcluster y api en el DNS (zona homelab.local de bind_dns).
 gateway_ip: 192.168.23.200
 dns_domain: mco.local
+# Dominios del "search" de /etc/resolv.conf (en orden).
+dns_search_domains:
+  - homelab.local
+  - mco.local
 k3s_control_plane_host: "192.168.20.5"
 k3s_server_tls_sans:
   - "192.168.20.5"

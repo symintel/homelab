@@ -58,8 +58,10 @@ correcto.
 
 ## Verificar
 
+El `ssh` entra con el [acceso por SSO](acceso-ssh.md) (`opkssh login` antes):
+
 ```bash
-ssh amaceo@192.168.20.5 findmnt /var/lib/longhorn-nvme0n1   # montado, con la entrada en /etc/fstab
+ssh devops@deborah.homelab.local findmnt /var/lib/longhorn-nvme0n1   # montado, con la entrada en /etc/fstab
 ```
 
 - **Longhorn:** en la UI (interfaz de usuario), *Node → deborah* muestra el disco nuevo con

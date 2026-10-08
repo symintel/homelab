@@ -205,7 +205,16 @@
     h1.parentNode.insertBefore(group, h1.nextSibling);
   }
 
+  // Fuente única de la URL del cuaderno: los enlaces marcados con data-notebook-link (p. ej. el botón de
+  // aprende.md) toman su destino de NOTEBOOK_URL. Sin JavaScript conservan su href de respaldo.
+  function fillNotebookLinks() {
+    if (!NOTEBOOK_URL) return;
+    var links = document.querySelectorAll("a[data-notebook-link]");
+    for (var i = 0; i < links.length; i++) links[i].setAttribute("href", NOTEBOOK_URL);
+  }
+
   function init() {
+    fillNotebookLinks();
     if (!isLearningPage(location.pathname)) return;
     var article = document.querySelector(".md-content article");
     if (!article) return;

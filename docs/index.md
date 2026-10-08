@@ -74,7 +74,7 @@ y te lleva a un cuaderno de estudio que **responde solo con esta documentación*
 audio. Elige tu nivel, pulsa el botón y pega la pregunta en el chat.
 
 - [**Cómo se usa y qué herramientas gratuitas hay**](aprende.md)
-- [Abrir el cuaderno de NotebookLM](https://notebook.google.com/notebook/2393c988-484f-4fb3-8cb7-d225ab5a5036) (necesitas una cuenta de Google)
+- [Abrir el cuaderno de NotebookLM](https://notebooklm.google/){ data-notebook-link="1" } (necesitas una cuenta de Google)
 - Si usas otro asistente: [`llms-full.txt`](https://homelab.symintelligent.com/llms-full.txt) trae toda la guía en texto plano.
 
 ## Hardware

@@ -45,8 +45,8 @@ sequenceDiagram
 
 | URL | Rol |
 |---|---|
-| `https://argocd.homelab.local` | ArgoCD UI; Dex issuer en `/api/dex` |
-| `https://vcluster.homelab.local` | vCluster Platform UI |
+| [`https://argocd.homelab.local`](https://argocd.homelab.local) | ArgoCD UI; Dex issuer en `/api/dex` |
+| [`https://vcluster.homelab.local`](https://vcluster.homelab.local) | vCluster Platform UI |
 
 ## Implementación (resumen)
 
@@ -96,7 +96,7 @@ Con SSO estable, pon `auth.password.disabled: true` en `platform.yaml`.
 
 ## Uso diario
 
-1. Abre `https://vcluster.homelab.local`
+1. Abre [`https://vcluster.homelab.local`](https://vcluster.homelab.local)
 2. **Login with SSO** (GitHub) o admin local hasta deshabilitar password
 3. **New Virtual Cluster** → nombre → **Create**
 4. En el vcluster: **Connect** / **Download kubeconfig**

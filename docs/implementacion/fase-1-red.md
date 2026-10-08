@@ -164,7 +164,17 @@ ansible-playbook -i inventory.ini playbook-bind-dns.yml
 ```
 
 Hasta que corra, los nodos resuelven por el gateway, con algo de demora en
-cada consulta. Detalle:
+cada consulta.
+
+Dos cosas que deja `playbook-set-static-ip.yml` y de las que dependen fases posteriores:
+
+- `/etc/resolv.conf` fijo en cada nodo, con `search homelab.local mco.local` y primero el BIND (`192.168.20.5`).
+  Si el nodo tiene NetworkManager, instala además `dns=none` para que no lo reescriba con el DNS del router. Sin
+  eso un nodo deja de resolver `*.homelab.local` (los nodos no podrían validar el SSO de la [4.12](fase-4-gitops.md#412-ssh-a-los-hosts-con-dex-opcional)).
+- La zona `homelab.local` de BIND trae un registro por cada nodo y por cada servicio publicado, sin comodín
+  (ver [4.8](fase-4-gitops.md#48-dns-de-homelablocal)).
+
+Comprueba en cada nodo: `cat /etc/resolv.conf` y `getent hosts oliver.homelab.local`. Detalle:
 [`ansible/roles/bind_dns/README.md`](https://github.com/symintel/homelab/blob/main/ansible/roles/bind_dns/README.md).
 
 ## Hardening (recomendado antes de seguir)

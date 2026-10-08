@@ -44,9 +44,12 @@ copyright: <a href="/privacidad/">Política de privacidad</a> · <a href="#__con
 extra_css:
   - stylesheets/extra.css
 
-# Botón "Aprende con IA" en cada paso (el enlace del cuaderno de NotebookLM está al inicio del archivo).
+# ai-tutor.js: botón "Aprende con IA" en cada paso. Es la fuente única del enlace del cuaderno de NotebookLM
+# (NOTEBOOK_URL, al inicio del archivo): el botón de aprende.md lo toma de ahí.
+# external-links.js: abre en una pestaña nueva todo enlace que apunta fuera de este sitio.
 extra_javascript:
   - javascripts/ai-tutor.js
+  - javascripts/external-links.js
 
 # Google Analytics (gtag.js). Material genera el snippet por su cuenta a partir de esta opción.
 extra:
@@ -162,6 +165,7 @@ nav:
   - Operación:
       - Procedimientos de rutina: operacion/index.md
       - URLs y accesos de los productos: operacion/urls-y-accesos.md
+      - Entrar por SSH a los servidores: operacion/acceso-ssh.md
       - Agregar un repo: operacion/agregar-repo.md
       - Agregar un nodo: operacion/agregar-nodo.md
       - Sacar o reemplazar un nodo: operacion/sacar-nodo.md

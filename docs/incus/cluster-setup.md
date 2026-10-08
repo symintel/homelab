@@ -128,6 +128,71 @@ incus cluster set oliver scheduler.instance manual
 Excluye a `oliver` del scheduling automático; solo recibe instancias si se apunta
 explícitamente con `--target=oliver`. Sigue contando como voto de quorum.
 
+## Máquinas virtuales (VM)
+
+### Qué nodos pueden correr VMs
+
+Una VM necesita KVM (Kernel-based Virtual Machine, virtualización por hardware del kernel), el módulo de kernel `vhost_vsock` y el driver `qemu` de
+Incus. Cómo está cada nodo:
+
+| Nodo | Arquitectura | ¿Corre VMs? | Motivo |
+|---|---|---|---|
+| invincible | x86_64 | Sí | Driver `lxc` + `qemu`, `vhost_vsock` disponible |
+| oliver | x86_64 | Sí | Igual que invincible |
+| deborah | ARM64 | **No** | Su kernel del fabricante (5.10, Rockchip) se compiló sin `vhost_vsock`, y su driver de Incus es solo `lxc` |
+
+Si una VM se crea con el destino en `Auto` y el planificador elige a deborah, falla con
+`Instance type "virtual-machine" is not supported on this server: vhost_vsock kernel module not loaded`.
+Indica siempre el nodo:
+
+```bash
+incus launch images:debian/12 mi-vm --vm --target invincible
+```
+
+En la UI, en el formulario de creación, elige la imagen primero (hasta entonces **Instance type**, **Target** y
+**Profiles** salen deshabilitados), después **Virtual machine** y en **Target** un nodo x86 (invincible u oliver).
+
+### Imágenes `cloud` y el disco del agente
+
+Las VMs de Incus se controlan desde fuera mediante `incus-agent`, un programa que corre dentro de la VM y permite
+`incus exec`, la consola, copiar archivos, ver la IP y apagar la VM limpiamente. Incus se lo entrega a la VM como un
+disco virtual de solo lectura llamado `agent:config`, que lleva el binario, sus certificados y el servicio que lo arranca.
+
+Con una imagen normal (p. ej. `almalinux/8`) Incus lo añade solo. Las variantes `cloud` (p. ej. `almalinux/8/cloud`,
+pensadas para cloud-init, que configura usuario, claves SSH y red al arrancar) exigen añadirlo a mano. Si falta, la VM
+no arranca:
+
+```text
+Error: This virtual machine image requires an agent:config disk be added
+```
+
+El perfil `default` no lo incluye (tampoco debe: lo comparten los contenedores y `agent:config` solo vale en VMs).
+Añádelo a la VM:
+
+```bash
+incus config device add mi-vm agent disk source=agent:config
+incus start mi-vm
+```
+
+O, si usas imágenes `cloud` a menudo, crea un perfil aparte y aplícalo al lanzar:
+
+```bash
+incus profile create vm-agent
+incus profile device add vm-agent agent disk source=agent:config
+incus launch images:almalinux/8/cloud mi-vm --vm -p default -p vm-agent --target invincible
+```
+
+Desde la UI: **Instances → (la VM) → Configuration → YAML configuration**, y dentro de `devices:` agrega
+
+```yaml
+devices:
+  agent:
+    type: disk
+    source: agent:config
+```
+
+Guarda con **Save changes** y pulsa **Start**.
+
 ## UI de administración
 
 Incus expone una **interfaz web nativa** (`incus-ui-canonical`) para gestionar
@@ -155,7 +220,7 @@ un contenedor: la sirve el daemon de Incus en `core.https_address`.
 `/etc/hosts` en tu estación — bloque completo en
 [Resumen del HomeLab](../implementacion/resumen-homelab.md#etchosts-en-tu-estacion-de-trabajo):
 
-Acceso inicial: `https://incus.homelab.local:8443` → certificado de cliente.
+Acceso inicial: [`https://incus.homelab.local:8443`](https://incus.homelab.local:8443) → certificado de cliente.
 
 <div class="card">
   <div class="card-kicker">UI</div>

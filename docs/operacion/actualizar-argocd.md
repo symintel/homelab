@@ -9,7 +9,7 @@ versión nueva, ArgoCD se aplica a sí mismo.
 | Pieza | Qué hace |
 |---|---|
 | `argocd/apps/argocd.yaml` | La Application: sigue `argocd/config` con sincronización automática y `ServerSideApply` |
-| `argocd/config/kustomization.yaml` | Base: `https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml`. Encima, `configMapGenerator` con `behavior: merge` para `argocd-cm`, `argocd-rbac-cm` y `argocd-cmd-params-cm` |
+| `argocd/config/kustomization.yaml` | Base: [`https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml`](https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml). Encima, `configMapGenerator` con `behavior: merge` para `argocd-cm`, `argocd-rbac-cm` y `argocd-cmd-params-cm` |
 | Rol Ansible `k3s_argocd` | Primera instalación y saltos de versión mayor (`version: latest` en `k3s_install.yml`) |
 
 !!! warning "Es una actualización sin supervisión"

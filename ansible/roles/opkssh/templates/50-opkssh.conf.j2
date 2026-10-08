@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# Acceso SSH con identidad de Dex (OIDC) vía opkssh. Convive con las llaves
+# normales de authorized_keys: no las reemplaza (acceso de emergencia).
+AuthorizedKeysCommand {{ opkssh_binary }} verify %u %k %t
+AuthorizedKeysCommandUser {{ opkssh_system_user }}

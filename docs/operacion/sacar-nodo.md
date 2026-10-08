@@ -49,10 +49,10 @@ En un worker, el playbook solo quita el agent (nunca toca el control plane).
 
 ## 4. Quitarlo de Incus
 
-Desde el leader (`invincible`):
+Desde el leader (`invincible`). El `ssh` entra con el [acceso por SSO](acceso-ssh.md) (`opkssh login` antes):
 
 ```bash
-ssh amaceo@192.168.20.6 sudo incus cluster remove nolan
+ssh devops@invincible.homelab.local sudo incus cluster remove nolan
 ```
 
 ## 5. Inventario y DNS
@@ -71,7 +71,7 @@ ansible-playbook -i inventory.ini playbook-bind-dns.yml
 
 ```bash
 kubectl get nodes                          # nolan ya no aparece
-ssh amaceo@192.168.20.6 sudo incus cluster list   # nolan ya no aparece
+ssh devops@invincible.homelab.local sudo incus cluster list   # nolan ya no aparece
 dig +short nolan.mco.local @192.168.20.5   # sin respuesta
 ```
 

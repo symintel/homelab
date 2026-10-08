@@ -3,8 +3,8 @@
 Instala BIND en `deborah`, ejecutándolo en un chroot (`/var/lib/named`),, lo configura como DNS de la LAN y
 sirve tres zonas generadas desde el inventario y las variables de Ansible:
 `mco.local` (nombres de los hosts), `20.168.192.in-addr.arpa` (reversa) y
-`homelab.local` (servicios publicados: `incus`, `argocd`, `vcluster` y un comodín
-hacia el Gateway).
+`homelab.local` (servidores y servicios publicados, cada uno con su registro
+explícito; no hay comodín).
 
 ## Playbook
 
@@ -36,7 +36,7 @@ Solo `deborah`.
 5. Genera `/var/lib/bind/db.mco.local` (un `A` por host de `incus_cluster`, con su
    `static_ip`; `ns` es `dns_primary` y `k3s` es `k3s_control_plane_host`),
    `/var/lib/bind/db.mco.local.inv` (los `PTR`) y `/var/lib/bind/db.homelab.local`
-   (dominio de servicios publicados: `incus` → `incus_cluster_leader`; `argocd`, `vcluster` y el comodín `*` → `gateway_ip`, la IP fija del Gateway en MetalLB, definida en `group_vars/all.yml`).
+   (dominio de servicios publicados: un registro por cada servidor de `incus_cluster` con su `static_ip`; `incus` → `incus_cluster_leader`; `argocd`, `vcluster` y `api` → `gateway_ip`, la IP fija del Gateway en MetalLB, definida en `group_vars/all.yml`).
    El serial es la fecha (`YYYYMMDD01`).
 6. Habilita `named`; recarga las zonas (`rndc reload`) si cambian los archivos
    y reinicia `named` si cambia la configuración.

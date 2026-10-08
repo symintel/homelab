@@ -105,7 +105,7 @@ kubectl delete clusterrole,clusterrolebinding,ingressclass,validatingwebhookconf
 
 Aplica primero el cambio de `argocd` (activa `server.insecure`): hasta que el
 Gateway esté `Programmed`, entra a ArgoCD con
-`kubectl port-forward svc/argocd-server -n argocd 8080:80` (`http://localhost:8080`).
+`kubectl port-forward svc/argocd-server -n argocd 8080:80` ([`http://localhost:8080`](http://localhost:8080)).
 
 ## Si falla
 

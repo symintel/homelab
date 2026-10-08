@@ -1,0 +1,29 @@
+---
+# opkssh — valores por defecto. Ver README.md del rol.
+
+# Versión fijada del binario y arquitectura del host (x86_64 -> amd64, aarch64 -> arm64).
+opkssh_version: v0.17.0
+opkssh_arch: "{{ 'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else 'amd64' }}"
+opkssh_download_base: "https://github.com/openpubkey/opkssh/releases/download/{{ opkssh_version }}"
+opkssh_binary: /usr/local/bin/opkssh
+
+# Usuario de sistema que ejecuta el AuthorizedKeysCommand (el dueño de /etc/opk).
+opkssh_system_user: opksshuser
+
+# Proveedor OIDC: Dex dentro de ArgoCD. El client id es el cliente público
+# "opkssh" de dex.config (repo symintel/gitops).
+opkssh_issuer: https://argocd.homelab.local/api/dex
+opkssh_client_id: opkssh
+opkssh_key_expiration: 24h
+
+# Cuenta Linux compartida a la que entra el team, y el grupo que lo permite.
+# Dex pone el team de GitHub en el claim groups como "<org>:<team slug>". La regla
+# normal de /etc/opk/auth_id no puede comparar grupos con ":", por eso la decisión
+# la toma un policy plugin (templates/devops-team.sh.j2).
+opkssh_login_user: devops
+opkssh_allowed_group: "symintel:devops"
+opkssh_login_user_sudo_nopasswd: true
+
+# Instalar la CA del HomeLab para que el host valide el certificado de Dex.
+# La lee de cert-manager con kubectl en la estación (exportar KUBECONFIG).
+opkssh_install_homelab_ca: true

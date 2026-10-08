@@ -107,6 +107,17 @@ ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass
 cd ..
 ```
 
+**Qué usuario recibe `sudo`.** El playbook da `sudo` sin contraseña al usuario administrador que creaste al
+instalar Debian. Por defecto es el **mismo nombre que usas en tu estación**, porque Ansible se conecta después con
+ese nombre. Si en el nodo se llama distinto, indícalo y dile a Ansible cómo conectarse:
+
+```bash
+ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass -e bootstrap_admin_user=<usuario>
+```
+
+y agrega `ansible_user=<usuario>` a los nodos en `inventory.ini`. El usuario tiene que existir ya en el nodo (el
+playbook se detiene si no) y solo admite minúsculas, dígitos, `_` y `-`.
+
 Detalle completo (por qué conecta como `root` y dónde encaja en el resto
 del bootstrap) en
 [`ansible/bootstrap/README.md`](https://github.com/symintel/homelab/blob/main/ansible/bootstrap/README.md).

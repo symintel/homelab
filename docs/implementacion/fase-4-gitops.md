@@ -134,11 +134,13 @@ completo, ya lo tienes (`k3s_install.fetch_kubeconfig.enabled: true`).
 === "Alternativa manual"
 
     El archivo en el nodo es de root con permisos `600`, así que se lee con
-    `sudo`; después se cambia `127.0.0.1` por la IP del control plane:
+    `sudo`; después se cambia `127.0.0.1` por la IP del control plane. `<usuario-admin>` es tu usuario
+    administrador del nodo ([Fase 0, Día 0](fase-0-preparacion.md#dia-0-nodos-recien-instalados-solo-la-primera-vez-por-nodo)):
+    aquí todavía no existe el acceso por SSO ([4.12](#412-ssh-a-los-hosts-con-dex-opcional)), que necesita a Dex.
 
     ```bash
     mkdir -p ~/.kube
-    ssh amaceo@192.168.20.5 sudo cat /etc/rancher/k3s/k3s.yaml \
+    ssh <usuario-admin>@192.168.20.5 sudo cat /etc/rancher/k3s/k3s.yaml \
       | sed 's#https://127.0.0.1:6443#https://192.168.20.5:6443#' \
       > ~/.kube/homelab-k3s.yaml
     chmod 600 ~/.kube/homelab-k3s.yaml
@@ -154,7 +156,7 @@ kubectl get nodes
 !!! tip "Alternativa web (Fase 5)"
     Tras desplegar [vCluster Platform](fase-5-vcluster.md), puedes descargar
     el kubeconfig del **management K3s** desde
-    `https://vcluster.homelab.local` (connected cluster), con SSO GitHub vía Dex.
+    [`https://vcluster.homelab.local`](https://vcluster.homelab.local) (connected cluster), con SSO GitHub vía Dex.
     El kubeconfig local de arriba sigue siendo el camino para el bootstrap, antes de la Fase 5.
 
 <div class="card">
@@ -242,7 +244,7 @@ Application (los recursos que creó quedan en el clúster).
 kubectl get applications -n argocd
 ```
 
-UI (interfaz de usuario) provisional (sin Gateway aún; `argocd-server` habla HTTP, abre `http://localhost:8080`):
+UI (interfaz de usuario) provisional (sin Gateway aún; `argocd-server` habla HTTP, abre [`http://localhost:8080`](http://localhost:8080)):
 
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:80
@@ -409,13 +411,13 @@ importes (y `curl` necesita `-k`).
 
 | Qué probar | URL | Qué debes ver |
 |---|---|---|
-| **ArgoCD** (UI) | `https://argocd.homelab.local` | Pantalla de login con el botón **Log in via GitHub**. Al pulsarlo pasa por GitHub y vuelve a ArgoCD con las Applications |
-| ArgoCD (HTTP) | `http://argocd.homelab.local` | Redirige (`301`) a la versión HTTPS |
-| ArgoCD (API) | `https://argocd.homelab.local/api/version` | `{"Version":"v3.x.x"}`: el servidor responde a través del Gateway |
-| **Dex** (descubrimiento) | `https://argocd.homelab.local/api/dex/.well-known/openid-configuration` | JSON con `"issuer": "https://argocd.homelab.local/api/dex"` |
+| **ArgoCD** (UI) | [`https://argocd.homelab.local`](https://argocd.homelab.local) | Pantalla de login con el botón **Log in via GitHub**. Al pulsarlo pasa por GitHub y vuelve a ArgoCD con las Applications |
+| ArgoCD (HTTP) | [`http://argocd.homelab.local`](http://argocd.homelab.local) | Redirige (`301`) a la versión HTTPS |
+| ArgoCD (API) | [`https://argocd.homelab.local/api/version`](https://argocd.homelab.local/api/version) | `{"Version":"v3.x.x"}`: el servidor responde a través del Gateway |
+| **Dex** (descubrimiento) | [`https://argocd.homelab.local/api/dex/.well-known/openid-configuration`](https://argocd.homelab.local/api/dex/.well-known/openid-configuration) | JSON con `"issuer": "https://argocd.homelab.local/api/dex"` |
 | Dex (callback) | `https://argocd.homelab.local/api/dex/callback` | **No se abre a mano.** Es la URL que tiene que estar en *Redirect URIs* de la OAuth App de GitHub |
-| **vCluster Platform** | `https://vcluster.homelab.local` | Login SSO con GitHub (Fase 5; antes no existe) |
-| **Incus UI** | `https://incus.homelab.local:8443` | **Login with SSO** → GitHub (ver más abajo) |
+| **vCluster Platform** | [`https://vcluster.homelab.local`](https://vcluster.homelab.local) | Login SSO con GitHub (Fase 5; antes no existe) |
+| **Incus UI** | [`https://incus.homelab.local:8443`](https://incus.homelab.local:8443) | **Login with SSO** → GitHub (ver más abajo) |
 
 Desde la terminal:
 
@@ -495,7 +497,7 @@ incus config set oidc.client.id=incus-ui
 
 Verificar:
 
-- `https://incus.homelab.local:8443` → **Login with SSO** → GitHub → entras a la UI de Incus
+- [`https://incus.homelab.local:8443`](https://incus.homelab.local:8443) → **Login with SSO** → GitHub → entras a la UI de Incus
 - Una cuenta que **no** está en el team `devops` → GitHub/Dex rechaza el login antes de llegar a Incus
 
 ### Flujo SSO
@@ -536,8 +538,13 @@ La zona `homelab.local` trae:
 | Registro | Apunta a |
 |---|---|
 | `incus.homelab.local` | invincible (`192.168.20.6`) |
-| `argocd.homelab.local`, `vcluster.homelab.local` | el Gateway: `gateway_ip` = `192.168.23.200` (primera IP del pool de MetalLB) |
-| `*.homelab.local` (comodín) | el Gateway: los `HTTPRoute` nuevos funcionan sin tocar el DNS |
+| `invincible.homelab.local`, `oliver.homelab.local`, `deborah.homelab.local` | cada servidor, con su IP fija (`192.168.20.6`, `.7` y `.5`) |
+| `argocd.homelab.local`, `vcluster.homelab.local`, `api.homelab.local` | el Gateway: `gateway_ip` = `192.168.23.200` (primera IP del pool de MetalLB) |
+
+No hay comodín: cada nombre es un registro explícito en
+[`db.homelab.local.j2`](https://github.com/symintel/homelab/blob/main/ansible/roles/bind_dns/templates/db.homelab.local.j2).
+Para publicar una app con un `HTTPRoute` nuevo, añade su registro a esa plantilla y aplica
+el playbook; hasta entonces su nombre no resuelve.
 
 La IP del Gateway es **fija**: los Service de `kong`, `traefik` y `nginx-gateway`
 la piden con una anotación de MetalLB, y la misma variable `gateway_ip`
@@ -547,14 +554,17 @@ lados. Aplica el DNS (desde `ansible/` en `homelab`):
 ```bash
 ansible-playbook -i inventory.ini playbook-bind-dns.yml
 dig @192.168.20.5 argocd.homelab.local +short   # 192.168.23.200
+dig @192.168.20.5 oliver.homelab.local +short   # 192.168.20.7
 ```
 
 Tu estación tiene que usar `192.168.20.5` como DNS. Si no puedes, el respaldo es
 `/etc/hosts`:
 
 ```
-192.168.23.200  argocd.homelab.local vcluster.homelab.local
-192.168.20.6    incus.homelab.local
+192.168.23.200  argocd.homelab.local vcluster.homelab.local api.homelab.local
+192.168.20.6    incus.homelab.local invincible.homelab.local
+192.168.20.7    oliver.homelab.local
+192.168.20.5    deborah.homelab.local
 ```
 
 Comprueba que el Gateway tiene esa IP:
@@ -589,9 +599,10 @@ Espera `Healthy` en `k3s-upgrade` ([system-upgrade-controller](https://github.co
 | Storage default | PVC `openebs-hostpath` provisiona |
 | Gateway responde | `curl -k https://argocd.homelab.local` |
 | SSO Dex | Login GitHub en ArgoCD |
-| Incus UI OIDC | Login SSO en `https://incus.homelab.local:8443` |
+| Incus UI OIDC | Login SSO en [`https://incus.homelab.local:8443`](https://incus.homelab.local:8443) |
 | Runner ARC | `arc-runners` Healthy; runner listado en *symintel → Settings → Actions → Runners* ([4.11](#411-arc-y-pipeline-de-opentofu)) |
 | Pipeline OpenTofu | Primer `tofu apply` de `infra` en verde; existe `terraform/tfstate-default-github` ([4.11](#411-arc-y-pipeline-de-opentofu)) |
+| SSH con Dex *(opcional)* | `opkssh login` y `ssh devops@oliver.homelab.local` entran ([4.12](#412-ssh-a-los-hosts-con-dex-opcional)) |
 
 Checklist global (URLs, `/etc/hosts`, nodos): **[Resumen del HomeLab](resumen-homelab.md)**.
 
@@ -630,6 +641,140 @@ A partir de acá, cada repo nuevo se agrega con el
 1Password (si despliega), entrada en el mapa de
 [`infra`](https://github.com/symintel/infra) por PR y el
 workflow de CI/CD.
+
+## 4.12 — SSH a los hosts con Dex (opcional)
+
+Los miembros del team `devops` de la org `symintel` en GitHub entran por SSH (Secure Shell, conexión cifrada por
+terminal) a `invincible`, `oliver` y `deborah` con la identidad de Dex, sin repartir llaves. Las instancias de
+Incus no entran aquí: se manejan con `incus exec` y el login SSO de la UI. Cómo entra una persona:
+[Entrar por SSH a los servidores](../operacion/acceso-ssh.md).
+
+**Requisitos.**
+
+- Dex funcionando ([4.5](#45-wave-2-argocd-en-lan-dex) y [4.7](#47-secretos-oauth-github-vcluster-incus-ui)).
+- El DNS de `homelab.local` aplicado ([4.8](#48-dns-de-homelablocal)) y **cada nodo usando el BIND de `deborah`**
+  en su `/etc/resolv.conf` (se fija en la [Fase 1](fase-1-red.md) con `playbook-set-static-ip.yml`). Sin eso un nodo
+  no puede validar ningún login.
+- `kubectl` con el kubeconfig del HomeLab: el rol lee la CA de cert-manager para que los nodos confíen en Dex.
+- Tu llave normal en `authorized_keys` de cada nodo ([hardening](fase-1-red.md#hardening-recomendado-antes-de-seguir)).
+  Este acceso se **suma** a las llaves, no las reemplaza: es tu vía de emergencia si Dex o K3s caen.
+
+### Cómo funciona
+
+SSH no habla OIDC (OpenID Connect, protocolo de inicio de sesión). [opkssh](https://github.com/openpubkey/opkssh),
+basado en [OpenPubkey](https://github.com/openpubkey/openpubkey), hace de puente:
+
+```mermaid
+sequenceDiagram
+    participant U as Estación del usuario
+    participant D as Dex + GitHub
+    participant H as Host (sshd + opkssh)
+    U->>D: opkssh login (navegador, PKCE)
+    D-->>U: token firmado (solo miembros del team devops)
+    U->>H: ssh devops@host (llave efímera + token)
+    H->>H: opkssh verify (proveedor, firma, grupo)
+    H-->>U: sesión como devops
+```
+
+1. `opkssh login` autentica contra Dex (GitHub) y deja una llave SSH que caduca a las 24 horas.
+2. Al conectar, `sshd` ejecuta `opkssh verify` (vía `AuthorizedKeysCommand`), que valida la firma del token
+   y que el emisor es Dex.
+3. Un *policy plugin* de opkssh exige el grupo `symintel:devops` y el usuario Linux `devops`.
+
+### Pasos
+
+1. **Cliente en Dex.** El cliente `opkssh` (público, PKCE, con los tres callbacks en `localhost`) está en
+   [`dex.config`](https://github.com/symintel/gitops/blob/main/argocd/config/dex.config). Cuando ArgoCD
+   sincronice, reinicia Dex para que lo cargue:
+
+    ```bash
+    kubectl -n argocd rollout restart deploy/argocd-dex-server
+    ```
+
+2. **Comprobar que los nodos resuelven Dex** (desde `ansible/` en `homelab`):
+
+    ```bash
+    ansible incus_cluster -i inventory.ini -b -m command -a "getent hosts argocd.homelab.local"
+    ```
+
+    Los tres deben dar `192.168.23.200`. Si alguno no, arregla primero su DNS (ver *Si falla* abajo).
+
+3. **Un nodo de prueba primero** (`oliver`), con `--check` antes de aplicar:
+
+    ```bash
+    export KUBECONFIG=~/.kube/homelab-k3s.yaml
+    cd ansible && source ../.venv/bin/activate
+    ansible-playbook -i inventory.ini playbook-opkssh.yml --limit oliver --check --diff
+    ansible-playbook -i inventory.ini playbook-opkssh.yml --limit oliver
+    ```
+
+    El rol se detiene antes de instalar nada si el nodo no resuelve a Dex o no confía en su certificado.
+
+4. **Probar el login** siguiendo [Entrar por SSH a los servidores](../operacion/acceso-ssh.md) y, con la sesión
+   funcionando, extender al resto: `--limit invincible,deborah`.
+
+Qué instala el rol
+[`opkssh`](https://github.com/symintel/homelab/blob/main/ansible/roles/opkssh/README.md) en cada nodo: el binario
+con versión fijada y su checksum, `/etc/opk/` (proveedor Dex y el plugin), la cuenta Linux `devops`, la CA del
+HomeLab y un archivo en `/etc/ssh/sshd_config.d/`.
+
+### Quién entra
+
+El acceso depende de **pertenecer al team `devops` en GitHub**. No hay listas de usuarios ni de emails.
+
+- **Dex** solo emite tokens a miembros del team
+  ([conector GitHub](https://github.com/symintel/gitops/blob/main/argocd/config/dex.config)) y pone el team en
+  el claim `groups` como `symintel:devops`.
+- **Cada nodo** exige ese grupo con un policy plugin (`/etc/opk/devops-team.sh`). El grupo se cambia con
+  `opkssh_allowed_group` en el rol.
+
+Dar de alta o de baja es cambiar el team en GitHub. Una baja impide obtener tokens nuevos, pero la llave que ya
+tenga la persona vale hasta que caduque (24 horas).
+
+!!! note "Por qué un plugin y no `/etc/opk/auth_id`"
+    La regla normal `oidc:groups:symintel:devops` no funciona con grupos de GitHub: opkssh separa la regla por
+    `:` y solo compara el último trozo (`devops`) con el grupo completo (`symintel:devops`), así que nunca
+    coinciden, y poner el valor entre comillas tampoco sirve. Por eso `auth_id` queda sin reglas y decide el
+    plugin. Se comprobó leyendo `policy/enforcer.go` de opkssh.
+
+!!! warning "Cuenta compartida con `sudo`"
+    Todos entran como `devops`, con `sudo` sin contraseña (`opkssh_login_user_sudo_nopasswd`): quien está en el
+    team es administrador de los tres nodos y el registro de sesiones no distingue personas por el usuario Linux.
+    Para exigir contraseña de `sudo`, pon esa variable en `false` y asigna una contraseña a la cuenta.
+
+### Análisis de trade-offs — cómo entrar por SSH
+
+| Alternativa | Ventaja | Coste / riesgo |
+|---|---|---|
+| **opkssh con Dex** (esta guía) | Reutiliza Dex y el team; llaves de 24 h; sin listas que mantener | Proyecto joven; hace falta un plugin por los grupos con `:`; Dex corre en K3s sobre estos mismos nodos |
+| CA SSH con certificados efímeros (step-ca) | Muy madura | Otro componente con su propia llave raíz que operar. Plan B |
+| Llaves públicas de GitHub filtradas por team | Simple | No usa Dex; las llaves no caducan |
+| `authorized_keys` por Ansible | Sin piezas nuevas | Cada alta o baja es un cambio manual |
+| Teleport / Boundary | Auditoría y grabación de sesiones | Pesado para tres nodos; Teleport Community no ofrece OIDC genérico |
+
+### Deshacer
+
+[`playbook-uninstall-opkssh.yml`](https://github.com/symintel/homelab/blob/main/ansible/playbook-uninstall-opkssh.yml)
+quita lo que instala el rol (configuración de `sshd`, binario, `/etc/opk` y la cuenta `devops`). Es seguro por
+defecto: sin `-e opkssh_uninstall_confirm=true` solo muestra qué quitaría.
+
+```bash
+ansible-playbook -i inventory.ini playbook-uninstall-opkssh.yml --limit oliver
+ansible-playbook -i inventory.ini playbook-uninstall-opkssh.yml --limit oliver -e opkssh_uninstall_confirm=true
+```
+
+No toca `authorized_keys` ni el hardening. La CA del HomeLab se conserva; para quitarla también:
+`-e opkssh_uninstall_remove_ca=true`.
+
+### Si falla (en el servidor)
+
+| Síntoma | Causa probable | Qué revisar |
+|---|---|---|
+| El rol se detiene: "no resuelve argocd.homelab.local" | El nodo no usa el BIND del HomeLab. Pasó en `deborah`: NetworkManager, sin `dns=none`, reescribió `/etc/resolv.conf` con el DNS del router | `cat /etc/resolv.conf` y `getent hosts argocd.homelab.local` en el nodo. Corrige con `playbook-set-static-ip.yml --limit <nodo>` ([Fase 1](fase-1-red.md)) |
+| `Permission denied`; en `/var/log/opkssh.log`: `no policy to allow …` | El token no trae el grupo `symintel:devops`, o se pidió otro usuario Linux | `opkssh inspect ~/.ssh/id_ecdsa-cert.pub` (debe listar `groups`); `/etc/opk/policy.d/devops-team.yml` |
+| `Permission denied`; en `/var/log/opkssh.log`: `lookup … no such host` | Igual que la primera fila | DNS del nodo |
+| `x509: certificate signed by unknown authority` en el nodo | El nodo no confía en la CA del HomeLab | `curl -s -o /dev/null -w "%{http_code} ssl_verify=%{ssl_verify_result}\n" https://argocd.homelab.local/api/dex/.well-known/openid-configuration` debe dar `200 ssl_verify=0` |
+| Nadie entra con SSO y Dex no responde | Dex vive en K3s sobre estos mismos nodos | Entra con la llave de emergencia de `authorized_keys` |
 
 ---
 

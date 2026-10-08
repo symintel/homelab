@@ -1,0 +1,134 @@
+---
+# Desinstala Longhorn de forma definitiva (no se vuelve a instalar): borra el clúster y los datos
+# (reutiliza playbook-reset-longhorn.yml) y además limpia lo que ese reset deja: etiquetas y
+# anotaciones de nodo de Longhorn, y el montaje y la entrada de fstab del disco dedicado que creó
+# playbook-storage-provision.yml.
+#
+# DESTRUCTIVO: borra todos los volúmenes y réplicas de Longhorn. El disco dedicado NO se formatea ni
+# se borra: solo se desmonta y se quita de fstab, con su filesystem y sus datos intactos.
+#
+# Requisito previo (gitops): comentar `longhorn` y `arc-runners` en bootstrap/root-appset.yaml y
+# hacer push, para que Argo CD no recree lo que este playbook borra.
+#
+# Ejecutar (desde ansible/, con KUBECONFIG apuntando al clúster):
+#   ansible-playbook -i inventory.ini playbook-uninstall-longhorn.yml                                # solo preflight
+#   ansible-playbook -i inventory.ini playbook-uninstall-longhorn.yml -e longhorn_reset_confirm=true
+#
+# Variables (-e nombre=valor):
+#   longhorn_reset_confirm       (false)  confirma el borrado; sin ella solo se muestra qué se tocaría.
+#   longhorn_uninstall_packages  (false)  también desinstala open-iscsi y nfs-common de los nodos.
+#                                         Ojo: k3s_prereqs los vuelve a instalar al correr playbook-k3s.yml.
+#
+# Las etiquetas node.longhorn.io/* de host_vars/*.yml (k3s_node_labels) las reaplica playbook-k3s.yml
+# (tag `labels`): quítalas de host_vars para que no vuelvan.
+
+- name: Longhorn - clúster y datos de los nodos (preflight y borrado)
+  ansible.builtin.import_playbook: playbook-reset-longhorn.yml
+
+- name: Longhorn - etiquetas y anotaciones de los nodos
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  vars:
+    longhorn_reset_confirm: false
+  environment:
+    KUBECONFIG: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') ~ '/.kube/homelab-k3s.yaml', true) }}"
+  tasks:
+    - name: Listar etiquetas y anotaciones node.longhorn.io/* de cada nodo
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl get nodes -o json | python3 -c "
+        import json,sys
+        for n in json.load(sys.stdin)['items']:
+            name = n['metadata']['name']
+            for kind in ('labels', 'annotations'):
+                for k, v in (n['metadata'].get(kind) or {}).items():
+                    if k.startswith('node.longhorn.io/'):
+                        print(name, kind, k, v)
+        "
+      args:
+        executable: /bin/bash
+      register: lh_node_meta
+      changed_when: false
+      tags: [preflight, always]
+
+    - name: Preflight - mostrar (nodo, tipo, clave, valor)
+      ansible.builtin.debug:
+        var: lh_node_meta.stdout_lines
+      tags: [preflight, always]
+
+    - name: Quitar etiquetas y anotaciones de Longhorn de los nodos
+      ansible.builtin.command: "kubectl {{ ('label' if item.split()[1] == 'labels' else 'annotate') }} node {{ item.split()[0] }} {{ item.split()[2] }}-"
+      loop: "{{ lh_node_meta.stdout_lines }}"
+      when: longhorn_reset_confirm | bool
+      changed_when: true
+      tags: [reset]
+
+- name: Longhorn - disco dedicado y paquetes en los nodos
+  hosts: incus_cluster
+  become: true
+  gather_facts: false
+  vars:
+    longhorn_reset_confirm: false
+    longhorn_uninstall_packages: false
+    longhorn_disks: >-
+      {{ storage_provision_disks | default([]) | selectattr('consumer', 'equalto', 'longhorn') | list }}
+  tasks:
+    - name: Preflight - montajes de los discos dedicados a Longhorn
+      ansible.builtin.shell: |
+        findmnt -no TARGET,SOURCE,FSTYPE "{{ item.mount_path }}" || echo "{{ item.mount_path }} no está montado"
+        grep -n "{{ item.mount_path }}" /etc/fstab || echo "sin entrada en fstab"
+        blkid {{ item.device }} || true
+      args:
+        executable: /bin/bash
+      loop: "{{ longhorn_disks }}"
+      loop_control:
+        label: "{{ item.device }} -> {{ item.mount_path }}"
+      register: lh_disk_pre
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      tags: [preflight, always]
+
+    - name: Preflight - mostrar
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ lh_disk_pre.results }}"
+      loop_control:
+        label: "{{ item.item.device }}"
+      tags: [preflight, always]
+
+    - name: La ruta debe estar bajo /var/lib/longhorn (evita desmontar otro disco por un error en host_vars)
+      ansible.builtin.assert:
+        that: item.mount_path is match('^/var/lib/longhorn')
+        fail_msg: "Por seguridad solo se desmonta bajo /var/lib/longhorn* (recibido: {{ item.mount_path }})"
+        quiet: true
+      loop: "{{ longhorn_disks }}"
+      loop_control:
+        label: "{{ item.mount_path }}"
+      when: longhorn_reset_confirm | bool
+      tags: [reset]
+
+    - name: Desmontar y quitar de fstab el disco (el filesystem y los datos quedan intactos)
+      ansible.posix.mount:
+        path: "{{ item.mount_path }}"
+        state: absent
+      loop: "{{ longhorn_disks }}"
+      loop_control:
+        label: "{{ item.device }} -> {{ item.mount_path }}"
+      when: longhorn_reset_confirm | bool
+      tags: [reset]
+
+    - name: Desinstalar open-iscsi y nfs-common
+      ansible.builtin.apt:
+        name:
+          - open-iscsi
+          - nfs-common
+        state: absent
+        purge: true
+        autoremove: true
+      when:
+        - longhorn_reset_confirm | bool
+        - longhorn_uninstall_packages | bool
+      tags: [reset, packages]

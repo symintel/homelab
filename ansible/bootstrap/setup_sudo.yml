@@ -1,9 +1,36 @@
 ---
+# Dia 0 de un nodo recien instalado: python3, sudo y sudo sin contrasena para
+# TU usuario administrador (el que creaste al instalar Debian).
+#
+# Usuario: por defecto, el nombre de tu usuario en la estacion desde la que corres
+# Ansible (variable de entorno USER). Es el mismo con el que Ansible se conecta
+# despues, porque ansible.cfg no fija remote_user. Si en el nodo se llama distinto:
+#
+#   ansible-playbook -i bootstrap/inventory.ini bootstrap/setup_sudo.yml --ask-pass \
+#     -e bootstrap_admin_user=<usuario>
+#
+# y pon ansible_user=<usuario> en inventory.ini para los demas playbooks.
+# Ver bootstrap/README.md.
 - name: Preparar servidor Debian (Instalar Python y sudo)
   hosts: servidores_debian
   gather_facts: false  # OBLIGATORIO: Evita que Ansible busque Python al iniciar
+  vars:
+    bootstrap_admin_user: "{{ lookup('ansible.builtin.env', 'USER') }}"
 
   tasks:
+    - name: Verificar el usuario administrador
+      ansible.builtin.assert:
+        that:
+          # El nombre se usa tambien como archivo en /etc/sudoers.d: sudo ignora
+          # los archivos con "." o "~" en el nombre, por eso se limita el formato.
+          - bootstrap_admin_user is match('^[a-z_][a-z0-9_-]*$')
+          - bootstrap_admin_user != 'root'
+        fail_msg: >-
+          Usuario administrador no valido: '{{ bootstrap_admin_user }}'. Debe ser el usuario
+          normal que creaste al instalar Debian (no root). Indicalo con
+          -e bootstrap_admin_user=<usuario>.
+        quiet: true
+
     - name: Actualizar repositorios e instalar Python3 y Sudo usando shell puro
       ansible.builtin.raw: |
         apt-get update && apt-get install -y python3 sudo
@@ -12,18 +39,34 @@
     - name: Recopilar datos del sistema (ahora que Python está instalado)
       ansible.builtin.gather_facts:
 
-    - name: Agregar el usuario amaceo al grupo sudo
+    # Sin esta comprobacion, el modulo user CREARIA el usuario si no existe y le daria
+    # sudo sin contrasena: un error de tipeo dejaria una cuenta nueva con privilegios.
+    - name: Comprobar que el usuario administrador ya existe en el nodo
+      ansible.builtin.command: "id -u {{ bootstrap_admin_user }}"
+      register: bootstrap_admin_exists
+      changed_when: false
+      failed_when: false
+
+    - name: Abortar si el usuario no existe
+      ansible.builtin.assert:
+        that: bootstrap_admin_exists.rc == 0
+        fail_msg: >-
+          El usuario '{{ bootstrap_admin_user }}' no existe en {{ inventory_hostname }}. Crealo al
+          instalar Debian, o indica el correcto con -e bootstrap_admin_user=<usuario>.
+        quiet: true
+
+    - name: Agregar el usuario administrador al grupo sudo
       ansible.builtin.user:
-        name: amaceo
+        name: "{{ bootstrap_admin_user }}"
         groups: sudo
         append: yes
 
-    - name: Configurar acceso sudo sin contraseña ni TTY para amaceo
+    - name: Configurar acceso sudo sin contraseña ni TTY para el usuario administrador
       ansible.builtin.copy:
-        dest: /etc/sudoers.d/amaceo
+        dest: "/etc/sudoers.d/{{ bootstrap_admin_user }}"
         content: |
-          amaceo ALL=(ALL:ALL) NOPASSWD: ALL
-          Defaults:amaceo !requiretty
+          {{ bootstrap_admin_user }} ALL=(ALL:ALL) NOPASSWD: ALL
+          Defaults:{{ bootstrap_admin_user }} !requiretty
         owner: root
         group: root
         mode: '0440'

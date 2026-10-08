@@ -46,6 +46,7 @@
 *[K3s]: distribución ligera de Kubernetes — Kubernetes empaquetado en un solo binario, pensado para edge y HomeLabs.
 *[K8s]: Kubernetes — Plataforma de orquestación de contenedores.
 *[KIC]: Kong Ingress Controller — Controlador de Kong para Kubernetes; aquí implementa Gateway API.
+*[KVM]: máquina virtual del kernel — Kernel-based Virtual Machine: virtualización por hardware integrada en el kernel de Linux; la usan las VMs de Incus.
 *[L2]: capa 2 del modelo OSI — Capa de enlace del modelo OSI: tráfico dentro de la misma red local (MAC, ARP).
 *[L3]: capa 3 del modelo OSI — Capa de red del modelo OSI: IPs y ruteo.
 *[L7]: capa 7 del modelo OSI — Capa de aplicación del modelo OSI: HTTP y similares.
@@ -60,8 +61,10 @@
 *[NVMe]: disco SSD por PCIe — Non-Volatile Memory Express: discos SSD de alta velocidad.
 *[OCI]: Open Container Initiative — Estándar de imágenes y registros; ARC y NGINX Gateway Fabric publican su chart de Helm en un registro OCI.
 *[OIDC]: OpenID Connect — Protocolo de inicio de sesión sobre OAuth 2.0; Dex lo usa para el login con GitHub.
+*[OpenPubkey]: Proyecto que convierte un login OIDC en una llave SSH de corta vida; lo usa opkssh para entrar a los hosts con la identidad de Dex.
 *[OS]: sistema operativo — Operating System.
 *[OVN]: Open Virtual Network — Red virtual definida por software que Incus puede usar.
+*[PKCE]: Proof Key for Code Exchange — Extensión de OAuth para clientes públicos (sin secreto), como incus-ui y opkssh en Dex.
 *[PR]: pull request — Solicitud de cambios en GitHub.
 *[PRs]: pull request — Solicitud de cambios en GitHub.
 *[PSS]: Pod Security Standards — Niveles de seguridad de Kubernetes para pods (privileged, baseline, restricted).

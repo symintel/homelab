@@ -67,11 +67,11 @@ Sync **auto** = la sincroniza `homelab-root` (si está descomentada en `root-app
 
 | Application / carpeta | Producto | Para qué sirve |
 |---|---|---|
-| **`argocd-route`** | [Gateway API](https://gateway-api.sigs.k8s.io/) | `HTTPRoute`: UI en `https://argocd.homelab.local`. |
+| **`argocd-route`** | [Gateway API](https://gateway-api.sigs.k8s.io/) | `HTTPRoute`: UI en [`https://argocd.homelab.local`](https://argocd.homelab.local). |
 | **`argocd/config/`** (`argocd`) | [Dex](https://dexidp.io/docs/) | Connector GitHub + staticClients vCluster e Incus UI. |
 | [`argocd/secrets/`](https://github.com/symintel/gitops/tree/main/argocd/secrets) | [1Password SDK](https://github.com/1Password/onepassword-sdk-python) | OAuth desde app local |
 
-**Cómo se ve.** La UI de ArgoCD en `https://argocd.homelab.local` pide iniciar sesión con GitHub (Dex):
+**Cómo se ve.** La UI de ArgoCD en [`https://argocd.homelab.local`](https://argocd.homelab.local) pide iniciar sesión con GitHub (Dex):
 
 ??? note "Ver captura: inicio de sesión de Argo CD"
     ![Pantalla de inicio de sesión de Argo CD con el botón «Log in via GitHub»](../assets/screenshots/argocd-login.jpg){ loading=lazy }
